@@ -1,3 +1,7 @@
+import { getCycleData } from "../data/cycles.js";
+import { applyCycleProgression, getUnlockedTechniques, learnTechnique } from "../logic/progression.js";
+import { validateTechniqueKnownCounts } from "../logic/validations.js";
+
 const DND5ECharacterSheet = globalThis.dnd5e?.applications?.actor?.CharacterActorSheet
   ?? globalThis.dnd5e?.applications?.actor?.ActorSheet5eCharacter;
 
@@ -58,11 +62,13 @@ function escapeHTML(value) {
 }
 
 function normalizeFDEData(data = {}) {
+  const base = data && typeof data === "object" ? foundry.utils.deepClone(data) : {};
   const beneficiosRaw = data.beneficiosCasta ?? data.beneficioCasta ?? FDE_DEFAULT_DATA.beneficiosCasta;
   const outrasPericiasRaw = data.outrasPericias ?? FDE_DEFAULT_DATA.outrasPericias;
   const tecnicasRaw = data.tecnicas ?? FDE_DEFAULT_DATA.tecnicas;
 
   return {
+    ...base,
     jogador: data.jogador ?? FDE_DEFAULT_DATA.jogador,
     especie: data.especie ?? FDE_DEFAULT_DATA.especie,
     casta: data.casta ?? FDE_DEFAULT_DATA.casta,
@@ -451,6 +457,12 @@ export class FDEActorSheet extends (DND5ECharacterSheet ?? FallbackActorSheet) {
   _renderFDETabHTML(fde) {
     const abilityRows = this._getAbilitiesForDisplay();
     const skillRows = this._getSkillsForDisplay();
+    const cycleData = getCycleData(fde.ciclo);
+    const cycleTitle = cycleData?.title ?? "Desconhecido";
+    const nextCycleData = fde.ciclo < 6 ? getCycleData(fde.ciclo + 1) : null;
+    const nextCycleXP = nextCycleData?.experience ?? Infinity;
+    const xpProgress = fde.ciclo < 6 ? Math.min(100, (fde.experiencia / nextCycleXP) * 100) : 100;
+    const techniqueSlotsLine = Object.values(cycleData?.techniqueSlots ?? {}).join(" / ");
 
     const castaOptions = CASTAS.map((casta) => {
       const selected = casta === fde.casta ? " selected" : "";
@@ -612,7 +624,30 @@ export class FDEActorSheet extends (DND5ECharacterSheet ?? FallbackActorSheet) {
           </div>
         </div>
 
-        <!-- Benefícios de Casta -->
+        <!-- Progressão de Ciclo -->
+        <div class="fde-block fde-cycle-block">
+          <div class="fde-section-header"><h4><i class="fas fa-ring"></i> Progressão de Ciclo</h4></div>
+          <div class="fde-cycle-display">
+            <div class="fde-cycle-badge">
+              <div class="fde-cycle-number">${fde.ciclo}</div>
+              <div class="fde-cycle-name">${escapeHTML(cycleTitle)}</div>
+            </div>
+            <div class="fde-cycle-details">
+              <div class="fde-xp-info">
+                <span>XP: ${fde.experiencia} / ${nextCycleXP === Infinity ? "∞" : nextCycleXP}</span>
+                ${fde.ciclo < 6 ? `<div class="fde-xp-bar"><div class="fde-xp-fill" style="width: ${xpProgress}%"></div></div>` : ""}
+              </div>
+              <div class="fde-xp-info">
+                <span>Slots de Técnicas (N1→N6): ${escapeHTML(techniqueSlotsLine)}</span>
+              </div>
+              ${fde.ciclo < 6
+                ? `<button type="button" class="fde-btn-advance" data-fde-action="advance-cycle" title="Avançar para o próximo ciclo">Subir de Ciclo</button>`
+                : '<span class="fde-cycle-max">Ciclo Máximo</span>'}
+            </div>
+          </div>
+        </div>
+
+        <!-- Atributos -->
         <div class="fde-block">
           <div class="fde-section-header">
             <h4><i class="fas fa-dice-d20"></i> Atributos</h4>
@@ -662,9 +697,14 @@ export class FDEActorSheet extends (DND5ECharacterSheet ?? FallbackActorSheet) {
           </div>
           <div class="fde-sub-header">
             <h5>Divindade / Profanação</h5>
-            <button type="button" class="fde-btn-add" data-fde-action="add-tecnica">
-              <i class="fas fa-plus"></i> Adicionar
-            </button>
+            <div class="fde-inline-actions">
+              <button type="button" class="fde-btn-add" data-fde-action="learn-technique">
+                <i class="fas fa-graduation-cap"></i> Aprender
+              </button>
+              <button type="button" class="fde-btn-add" data-fde-action="add-tecnica">
+                <i class="fas fa-plus"></i> Adicionar
+              </button>
+            </div>
           </div>
           <div class="fde-tech-list">${tecnicas}</div>
         </div>
@@ -686,11 +726,141 @@ export class FDEActorSheet extends (DND5ECharacterSheet ?? FallbackActorSheet) {
         return this._addOutraPericia();
       case "remove-pericia":
         return this._removeOutraPericia(Number(event.currentTarget.dataset.index));
+      case "learn-technique":
+        return this._openLearnTechniqueDialog();
       case "add-tecnica":
         return this._addTecnica();
       case "remove-tecnica":
         return this._removeTecnica(Number(event.currentTarget.dataset.index));
+      case "advance-cycle":
+        return this._advanceCycle();
+      default:
+        return undefined;
     }
+
+  }
+
+  _buildLearnTechniqueDialogHTML(fdeData) {
+    const unlocked = getUnlockedTechniques(fdeData.casta, fdeData.ciclo);
+    if (!unlocked.length) {
+      return '<p class="fde-empty-hint">Nenhuma técnica liberada para a casta/ciclo atual.</p>';
+    }
+
+    const knownSet = new Set(fdeData.tecnicasConhecidas ?? []);
+    const knownCounts = validateTechniqueKnownCounts(fdeData);
+    const grouped = new Map();
+
+    for (const technique of unlocked) {
+      const level = Number(technique.level ?? 1);
+      if (!grouped.has(level)) grouped.set(level, []);
+      grouped.get(level).push(technique);
+    }
+
+    const levels = [...grouped.keys()].sort((a, b) => a - b);
+    const sections = levels.map((level) => {
+      const total = Number(fdeData.progressao?.slotsTecnicas?.[level] ?? 0);
+      const used = Number(knownCounts[level] ?? 0);
+      const available = Math.max(0, total - used);
+
+      const rows = grouped.get(level)
+        .sort((a, b) => String(a.name).localeCompare(String(b.name), "pt-BR"))
+        .map((technique) => {
+          const known = knownSet.has(technique.id);
+          const blockedBySlot = !known && available <= 0;
+          const disabled = known || blockedBySlot;
+          const status = known ? "Conhecida" : (blockedBySlot ? "Sem slot" : "Liberada");
+          const cost = technique.costAuraText ?? "-";
+
+          return `
+            <li class="fde-learn-row${known ? " is-known" : ""}">
+              <div class="fde-learn-main">
+                <span class="fde-learn-name">${escapeHTML(technique.name)}</span>
+                <span class="fde-learn-meta">Custo: ${escapeHTML(cost)} · Status: ${escapeHTML(status)}</span>
+              </div>
+              <button
+                type="button"
+                class="fde-btn-add"
+                data-fde-action="confirm-learn-technique"
+                data-technique-id="${escapeHTML(technique.id)}"
+                ${disabled ? "disabled" : ""}
+              >Aprender</button>
+            </li>
+          `;
+        }).join("");
+
+      return `
+        <section class="fde-learn-group">
+          <header class="fde-learn-group-header">
+            <strong>Nível ${level}</strong>
+            <span>Slots: ${used}/${total} (restante: ${available})</span>
+          </header>
+          <ul class="fde-learn-list">${rows}</ul>
+        </section>
+      `;
+    }).join("");
+
+    return `<div class="fde-learn-dialog">${sections}</div>`;
+  }
+
+  async _openLearnTechniqueDialog() {
+    const fdeData = await this._getCurrentFDEData();
+    const DialogClass = globalThis.Dialog;
+
+    if (!DialogClass) {
+      ui.notifications?.warn("Sistema de diálogo não disponível nesta versão do Foundry.");
+      return;
+    }
+
+    const content = this._buildLearnTechniqueDialogHTML(fdeData);
+
+    const dialog = new DialogClass({
+      title: "Aprender Técnicas",
+      content,
+      buttons: {
+        close: {
+          label: "Fechar"
+        }
+      },
+      render: (html) => {
+        const root = html?.[0] ?? html;
+        if (!root) return;
+
+        root.querySelectorAll?.('[data-fde-action="confirm-learn-technique"]').forEach((button) => {
+          button.addEventListener("click", async (event) => {
+            event.preventDefault();
+            const techniqueId = event.currentTarget?.dataset?.techniqueId;
+            if (!techniqueId) return;
+
+            const result = await learnTechnique(this.actor, techniqueId);
+            if (!result?.ok) {
+              ui.notifications?.warn(result?.reason ?? "Não foi possível aprender esta técnica.");
+              return;
+            }
+
+            ui.notifications?.info(`Técnica aprendida: ${result.technique?.name ?? techniqueId}.`);
+            dialog.close();
+            this.render(true);
+          });
+        });
+      }
+    });
+
+    dialog.render(true);
+  }
+
+  async _advanceCycle() {
+    const currentData = await this._getCurrentFDEData();
+    const currentCycle = Number(currentData.ciclo ?? 1);
+    const targetCycle = currentCycle + 1;
+
+    const result = await applyCycleProgression(this.actor, targetCycle);
+    if (!result?.ok) {
+      ui.notifications?.warn(result?.reason ?? "Não foi possível subir de ciclo.");
+      return;
+    }
+
+    ui.notifications?.info(`${this.actor.name} avançou para o ciclo ${targetCycle}: ${result.title}.`);
+    this.render(true);
   }
 
   async _getCurrentFDEData() {

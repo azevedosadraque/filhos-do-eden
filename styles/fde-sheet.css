@@ -242,6 +242,159 @@
   color: color-mix(in srgb, var(--color-text-dark-primary, #191813) 78%, #000 22%);
 }
 
+.fde-inline-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.fde-btn-add[disabled] {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.fde-cycle-display {
+  display: grid;
+  grid-template-columns: minmax(120px, 160px) 1fr;
+  gap: 10px;
+}
+
+.fde-cycle-badge {
+  border: 1px solid color-mix(in srgb, var(--color-border-light-tertiary, #7a7971) 70%, #000 30%);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--dnd5e-color-card, #ffffff) 88%, #000 12%);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  min-height: 74px;
+}
+
+.fde-cycle-number {
+  font-size: 1.5rem;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--dnd5e-color-gold, #c9a227);
+}
+
+.fde-cycle-name {
+  margin-top: 4px;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 700;
+}
+
+.fde-cycle-details {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  justify-content: center;
+}
+
+.fde-xp-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.8rem;
+}
+
+.fde-xp-bar {
+  width: 100%;
+  height: 8px;
+  border-radius: 99px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--color-border-light-tertiary, #7a7971) 70%, #000 30%);
+  background: color-mix(in srgb, var(--dnd5e-color-card, #ffffff) 70%, #000 30%);
+}
+
+.fde-xp-fill {
+  height: 100%;
+  background: var(--dnd5e-color-gold, #c9a227);
+}
+
+.fde-btn-advance {
+  align-self: flex-start;
+  padding: 4px 10px;
+  border: 1px solid color-mix(in srgb, var(--color-border-light-tertiary, #7a7971) 70%, #000 30%);
+  border-radius: 4px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  color: #fff;
+  background: var(--dnd5e-color-gold, #c9a227);
+}
+
+.fde-cycle-max {
+  font-size: 0.78rem;
+  font-style: italic;
+  opacity: 0.9;
+}
+
+.fde-learn-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 60vh;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.fde-learn-group {
+  border: 1px solid color-mix(in srgb, var(--color-border-light-tertiary, #7a7971) 70%, #000 30%);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--dnd5e-color-card, #ffffff) 90%, #000 10%);
+}
+
+.fde-learn-group-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border-light-tertiary, #7a7971) 70%, #000 30%);
+  font-size: 0.78rem;
+}
+
+.fde-learn-list {
+  list-style: none;
+  margin: 0;
+  padding: 6px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fde-learn-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: center;
+}
+
+.fde-learn-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fde-learn-name {
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.fde-learn-meta {
+  font-size: 0.74rem;
+  opacity: 0.85;
+}
+
+.fde-learn-row.is-known .fde-learn-name,
+.fde-learn-row.is-known .fde-learn-meta {
+  opacity: 0.6;
+}
+
 .fde-empty-hint {
   font-size: 0.78rem;
   color: color-mix(in srgb, var(--color-text-dark-primary, #191813) 70%, #000 30%);
