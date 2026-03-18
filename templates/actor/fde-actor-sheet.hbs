@@ -1,0 +1,311 @@
+<form class="fde-sheet standard-form">
+  <header class="fde-header">
+    <div class="fde-brand">Filhos do Eden | Ficha Customizada</div>
+    <div class="fde-header-main">
+      <aside class="fde-portrait-wrap">
+        <img class="fde-portrait" src="{{actor.img}}" data-edit="img" alt="{{actor.name}}" />
+      </aside>
+
+      <div class="fde-top-grid">
+        <div>
+          <label>Nome do Personagem</label>
+          <input type="text" name="name" value="{{actor.name}}" />
+        </div>
+
+        <div>
+          <label>Jogador</label>
+          <input type="text" name="fde.jogador" value="{{fde.jogador}}" />
+        </div>
+
+        <div>
+          <label>Espécie</label>
+          <input type="text" name="fde.especie" value="{{fde.especie}}" />
+        </div>
+
+        <div>
+          <label>Casta</label>
+          <select name="fde.casta">
+            {{selectOptions castas selected=fde.casta}}
+          </select>
+        </div>
+
+        <div>
+          <label>Ciclo</label>
+          <input type="number" name="fde.ciclo" value="{{fde.ciclo}}" min="1" max="6" />
+        </div>
+
+        <div>
+          <label>Alinhamento</label>
+          <input type="text" name="fde.alinhamento" value="{{fde.alinhamento}}" />
+        </div>
+
+        <div>
+          <label>Experiência</label>
+          <input type="number" name="fde.experiencia" value="{{fde.experiencia}}" />
+        </div>
+
+        <div>
+          <label>Aura Atual</label>
+          <input type="number" name="fde.aura.value" value="{{fde.aura.value}}" />
+        </div>
+
+        <div>
+          <label>Aura Máxima</label>
+          <input type="number" name="fde.aura.max" value="{{fde.aura.max}}" />
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <nav class="sheet-tabs tabs" data-group="primary">
+    <a class="item" data-tab="geral">Geral</a>
+    <a class="item" data-tab="combate">Combate</a>
+    <a class="item" data-tab="casta">Casta e Aura</a>
+    <a class="item" data-tab="tecnicas">Divindades</a>
+    <a class="item" data-tab="equipamentos">Equipamentos</a>
+  </nav>
+
+  <section class="sheet-body">
+    <div class="tab" data-group="primary" data-tab="geral">
+      <section class="fde-section">
+        <div class="fde-section-header">
+          <h2>Atributos</h2>
+        </div>
+        <div class="fde-ability-grid">
+          {{#each abilities}}
+            <article class="fde-card">
+              <div class="fde-card-title">{{this.label}} ({{this.abbreviation}})</div>
+              <div class="fde-stat-line"><strong>Valor:</strong> {{this.value}}</div>
+              <div class="fde-stat-line"><strong>Mod:</strong> {{this.mod}}</div>
+              <div class="fde-stat-line"><strong>Save:</strong> {{this.save}}</div>
+            </article>
+          {{/each}}
+        </div>
+      </section>
+
+      <section class="fde-section">
+        <div class="fde-section-header">
+          <h2>Perícias</h2>
+        </div>
+        <div class="fde-table">
+          <div class="fde-table-head">
+            <span>Perícia</span>
+            <span>Atributo</span>
+            <span>Total</span>
+            <span>Passiva</span>
+            <span>Prof.</span>
+          </div>
+          {{#each skills}}
+            <div class="fde-table-row">
+              <span>{{this.label}}</span>
+              <span>{{this.ability}}</span>
+              <span>{{this.total}}</span>
+              <span>{{this.passive}}</span>
+              <span>{{this.proficiency}}</span>
+            </div>
+          {{/each}}
+        </div>
+      </section>
+
+      <section class="fde-section">
+        <div class="fde-section-header">
+          <h2>Outras Perícias</h2>
+          <button type="button" data-action="add-pericia">Adicionar</button>
+        </div>
+        <div class="fde-stack">
+          {{#each fdeOutrasPericias}}
+            <div class="fde-inline-fields">
+              <input type="text" name="fde.outrasPericias.{{this.index}}" value="{{this.value}}" />
+              <button type="button" data-action="remove-pericia" data-index="{{this.index}}">Remover</button>
+            </div>
+          {{/each}}
+        </div>
+      </section>
+    </div>
+
+    <div class="tab" data-group="primary" data-tab="combate">
+      <section class="fde-section">
+        <div class="fde-section-header">
+          <h2>Resumo de Combate</h2>
+        </div>
+        <div class="fde-combat-grid">
+          <article class="fde-card"><div class="fde-card-title">CA</div><div class="fde-card-value">{{combate.classeArmadura}}</div></article>
+          <article class="fde-card"><div class="fde-card-title">Iniciativa</div><div class="fde-card-value">{{combate.iniciativa}}</div></article>
+          <article class="fde-card"><div class="fde-card-title">Proficiência</div><div class="fde-card-value">{{combate.proficiencia}}</div></article>
+          <article class="fde-card"><div class="fde-card-title">Deslocamento</div><div class="fde-card-value fde-card-value--small">{{combate.deslocamento}}</div></article>
+          <article class="fde-card"><div class="fde-card-title">PV</div><div class="fde-card-value fde-card-value--small">{{combate.pontosVida.value}} / {{combate.pontosVida.max}}</div></article>
+          <article class="fde-card"><div class="fde-card-title">PV Temp.</div><div class="fde-card-value">{{combate.pontosVida.temp}}</div></article>
+          <article class="fde-card"><div class="fde-card-title">DV</div><div class="fde-card-value">{{combate.dadosVida}}</div></article>
+          <article class="fde-card"><div class="fde-card-title">Morte</div><div class="fde-card-value fde-card-value--small">{{combate.mortes.success}} ✓ / {{combate.mortes.failure}} ✗</div></article>
+        </div>
+      </section>
+
+      <section class="fde-section">
+        <div class="fde-section-header">
+          <h2>Ataques</h2>
+        </div>
+        <div class="fde-list">
+          {{#each weapons}}
+            <article class="fde-list-item">
+              <img src="{{this.img}}" alt="{{this.name}}" class="fde-item-icon" />
+              <div class="fde-list-main">
+                <strong>{{this.name}}</strong>
+                <div class="fde-meta">Dano: {{this.damage}} | Alcance: {{this.range}} | Ação: {{this.activation}}</div>
+              </div>
+              <div class="fde-badge">{{#if this.equipped}}Equipado{{else}}Guardado{{/if}}</div>
+            </article>
+          {{else}}
+            <p>Nenhuma arma encontrada no ator.</p>
+          {{/each}}
+        </div>
+      </section>
+    </div>
+
+    <div class="tab" data-group="primary" data-tab="casta">
+      <section class="fde-section">
+        <div class="fde-section-header">
+          <h2>Aura</h2>
+        </div>
+        <div class="fde-combat-grid">
+          <article class="fde-card"><div class="fde-card-title">Atual</div><div class="fde-card-value">{{fde.aura.value}}</div></article>
+          <article class="fde-card"><div class="fde-card-title">Máxima</div><div class="fde-card-value">{{fde.aura.max}}</div></article>
+          <article class="fde-card"><div class="fde-card-title">Casta</div><div class="fde-card-value fde-card-value--small">{{fde.casta}}</div></article>
+          <article class="fde-card"><div class="fde-card-title">Ciclo</div><div class="fde-card-value">{{fde.ciclo}}</div></article>
+        </div>
+      </section>
+
+      <section class="fde-section">
+        <div class="fde-section-header">
+          <h2>Benefícios de Casta</h2>
+          <button type="button" data-action="add-beneficio">Adicionar</button>
+        </div>
+        <div class="fde-stack">
+          {{#each fdeBeneficios}}
+            <div class="fde-inline-fields">
+              <input type="text" name="fde.beneficiosCasta.{{this.index}}" value="{{this.value}}" />
+              <button type="button" data-action="remove-beneficio" data-index="{{this.index}}">Remover</button>
+            </div>
+          {{/each}}
+        </div>
+      </section>
+    </div>
+
+    <div class="tab" data-group="primary" data-tab="tecnicas">
+      <section class="fde-section">
+        <div class="fde-section-header">
+          <h2>Divindades</h2>
+          <button type="button" data-action="add-tecnica" data-tipo="divindade">Adicionar</button>
+        </div>
+        <div class="fde-stack">
+          {{#each tecnicasDivindade}}
+            <article class="fde-technique-card">
+              <div class="fde-technique-grid">
+                <div>
+                  <label>Nome</label>
+                  <input type="text" name="fde.tecnicas.{{this.index}}.nome" value="{{this.nome}}" />
+                </div>
+                <div>
+                  <label>Nível</label>
+                  <input type="number" name="fde.tecnicas.{{this.index}}.nivel" value="{{this.nivel}}" min="1" />
+                </div>
+                <div>
+                  <label>Tipo</label>
+                  <select name="fde.tecnicas.{{this.index}}.tipo">
+                    {{selectOptions ../tiposTecnica selected=this.tipo}}
+                  </select>
+                </div>
+                <div>
+                  <label>Custo de Aura</label>
+                  <input type="number" name="fde.tecnicas.{{this.index}}.custoAura" value="{{this.custoAura}}" min="0" />
+                </div>
+              </div>
+              <label>Descrição</label>
+              <textarea name="fde.tecnicas.{{this.index}}.descricao" rows="3">{{this.descricao}}</textarea>
+              <div class="fde-actions-row">
+                <button type="button" data-action="remove-tecnica" data-index="{{this.index}}">Remover</button>
+              </div>
+            </article>
+          {{else}}
+            <p>Nenhuma divindade cadastrada.</p>
+          {{/each}}
+        </div>
+      </section>
+
+      <section class="fde-section">
+        <div class="fde-section-header">
+          <h2>Profanações</h2>
+          <button type="button" data-action="add-tecnica" data-tipo="profanacao">Adicionar</button>
+        </div>
+        <div class="fde-stack">
+          {{#each tecnicasProfanacao}}
+            <article class="fde-technique-card">
+              <div class="fde-technique-grid">
+                <div>
+                  <label>Nome</label>
+                  <input type="text" name="fde.tecnicas.{{this.index}}.nome" value="{{this.nome}}" />
+                </div>
+                <div>
+                  <label>Nível</label>
+                  <input type="number" name="fde.tecnicas.{{this.index}}.nivel" value="{{this.nivel}}" min="1" />
+                </div>
+                <div>
+                  <label>Tipo</label>
+                  <select name="fde.tecnicas.{{this.index}}.tipo">
+                    {{selectOptions ../tiposTecnica selected=this.tipo}}
+                  </select>
+                </div>
+                <div>
+                  <label>Custo de Aura</label>
+                  <input type="number" name="fde.tecnicas.{{this.index}}.custoAura" value="{{this.custoAura}}" min="0" />
+                </div>
+              </div>
+              <label>Descrição</label>
+              <textarea name="fde.tecnicas.{{this.index}}.descricao" rows="3">{{this.descricao}}</textarea>
+              <div class="fde-actions-row">
+                <button type="button" data-action="remove-tecnica" data-index="{{this.index}}">Remover</button>
+              </div>
+            </article>
+          {{else}}
+            <p>Nenhuma profanação cadastrada.</p>
+          {{/each}}
+        </div>
+      </section>
+    </div>
+
+    <div class="tab" data-group="primary" data-tab="equipamentos">
+      <section class="fde-section">
+        <div class="fde-section-header">
+          <h2>Inventário</h2>
+        </div>
+        <div class="fde-list">
+          {{#each inventory}}
+            <article class="fde-list-item">
+              <img src="{{this.img}}" alt="{{this.name}}" class="fde-item-icon" />
+              <div class="fde-list-main">
+                <strong>{{this.name}}</strong>
+                <div class="fde-meta">Tipo: {{this.type}} | Quantidade: {{this.quantity}}</div>
+              </div>
+              <div class="fde-badge">
+                {{#if this.equipped}}
+                  Equipado
+                {{else}}
+                  {{#if this.carried}}
+                    Carregado
+                  {{else}}
+                    Guardado
+                  {{/if}}
+                {{/if}}
+              </div>
+            </article>
+          {{else}}
+            <p>Nenhum item físico encontrado no ator.</p>
+          {{/each}}
+        </div>
+      </section>
+    </div>
+  </section>
+
+  <footer class="fde-footer">
+    <button type="submit">Salvar Alterações</button>
+  </footer>
+</form>
