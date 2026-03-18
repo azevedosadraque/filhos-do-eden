@@ -1,0 +1,42 @@
+{
+  "id": "filhos-do-eden",
+  "title": "Filhos do Eden",
+  "description": "Módulo para Filhos do Eden",
+  "version": "1.0.0",
+  "authors": [
+    {
+      "name": "Sadraque Azevedo",
+      "url": "https://github.com/azevedosadraque"
+    }
+  ],
+  "compatibility": {
+    "minimum": "12",
+    "verified": "13"
+  },
+  "relationships": {
+    "systems": [
+      {
+        "id": "dnd5e",
+        "type": "system"
+      }
+    ]
+  },
+  "esmodules": [
+    "scripts/main.js"
+  ],
+  "styles": [
+    "styles/style.css"
+  ],
+  "languages": [
+    {
+      "lang": "pt-BR",
+      "name": "Português (Brasil)",
+      "path": "lang/pt-BR.json"
+    }
+  ],
+  "manifest": "https://github.com/azevedosadraque/filhos-do-eden/releases/latest/download/module.json",
+  "download": "https://github.com/azevedosadraque/filhos-do-eden/releases/download/v1.0.0/filhos-do-eden.zip",
+  "url": "https://github.com/azevedosadraque/filhos-do-eden",
+  "readme": "https://github.com/azevedosadraque/filhos-do-eden/blob/main/README.md",
+  "license": "https://github.com/azevedosadraque/filhos-do-eden/blob/main/LICENSE"
+}
