@@ -342,6 +342,45 @@
   padding-right: 2px;
 }
 
+.fde-learn-filters {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1.5fr;
+  gap: 8px;
+  align-items: end;
+}
+
+.fde-learn-filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.fde-learn-filter-field span {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.9;
+}
+
+.fde-learn-filter-field select,
+.fde-learn-filter-field input {
+  height: 24px;
+  padding: 0 6px;
+  font-size: 0.8rem;
+  border: 1px solid color-mix(in srgb, var(--color-border-light-tertiary, #7a7971) 70%, #000 30%);
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--dnd5e-color-card, #ffffff) 92%, #000 8%);
+  color: var(--color-text-dark-primary, #191813);
+}
+
+.fde-learn-filter-field input:focus,
+.fde-learn-filter-field select:focus {
+  outline: none;
+  border-color: var(--dnd5e-color-gold, #c9a227);
+  box-shadow: 0 0 0 1px var(--dnd5e-color-gold, #c9a227);
+}
+
 .fde-learn-group {
   border: 1px solid color-mix(in srgb, var(--color-border-light-tertiary, #7a7971) 70%, #000 30%);
   border-radius: 6px;
@@ -401,6 +440,70 @@
   opacity: 0.85;
   font-style: italic;
   padding: 2px 0;
+}
+
+.fde-casta-resource-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.fde-resource-counter {
+  margin: 0;
+  font-size: 0.78rem;
+  opacity: 0.9;
+}
+
+.fde-pending-note {
+  margin: 0;
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: #6b2020;
+}
+
+.fde-resource-effects {
+  margin: 0;
+  padding: 0 0 0 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 0.76rem;
+  opacity: 0.9;
+}
+
+.fde-cycle-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 2px;
+  font-size: 0.82rem;
+  color: var(--color-text-dark-primary, #191813);
+}
+
+.fde-cycle-confirm h4 {
+  margin: 2px 0 0;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--dnd5e-color-gold, #c9a227);
+}
+
+.fde-cycle-confirm p {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.fde-cycle-confirm ul {
+  margin: 0;
+  padding: 0 0 0 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fde-cycle-confirm li {
+  line-height: 1.35;
 }
 
 /* ---------- Card de Técnica ---------- */
@@ -626,6 +729,126 @@
   gap: 8px;
 }
 
+.fde-tech-slots-panel {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.fde-tech-slot-card {
+  border: 1px solid color-mix(in srgb, var(--color-border-light-tertiary, #7a7971) 70%, #000 30%);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--dnd5e-color-card, #ffffff) 90%, #000 10%);
+  padding: 6px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fde-tech-slot-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 0.74rem;
+}
+
+.fde-tech-known-list {
+  margin: 0;
+  padding: 0 0 0 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.76rem;
+}
+
+.fde-tech-known-details {
+  border: 1px solid color-mix(in srgb, var(--color-border-light-tertiary, #7a7971) 60%, #000 40%);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--dnd5e-color-card, #ffffff) 94%, #000 6%);
+  padding: 2px 6px;
+}
+
+.fde-tech-known-details summary {
+  cursor: pointer;
+  font-weight: 700;
+  list-style: none;
+}
+
+.fde-tech-known-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.fde-tech-known-details summary::before {
+  content: "▸";
+  margin-right: 6px;
+  opacity: 0.85;
+}
+
+.fde-tech-known-details[open] summary::before {
+  content: "▾";
+}
+
+.fde-tech-known-body {
+  margin-top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.74rem;
+}
+
+.fde-tech-known-body p {
+  margin: 0;
+  line-height: 1.35;
+}
+
+/* ---------- Sub-abas internas (modo injeção) ---------- */
+.fde-inner-tabs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.fde-inner-tab {
+  border: 1px solid color-mix(in srgb, var(--color-border-light-tertiary, #7a7971) 70%, #000 30%);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--dnd5e-color-card, #ffffff) 92%, #000 8%);
+  color: var(--color-text-dark-primary, #191813);
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+.fde-inner-tab.active {
+  border-color: var(--dnd5e-color-gold, #c9a227);
+  box-shadow: 0 0 0 1px var(--dnd5e-color-gold, #c9a227);
+}
+
+.fde-inner-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.fde-learn-inline-host {
+  margin-top: 8px;
+}
+
+.fde-learn-inline {
+  border: 1px solid color-mix(in srgb, var(--color-border-light-tertiary, #7a7971) 70%, #000 30%);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--dnd5e-color-card, #ffffff) 90%, #000 10%);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 /* ---------- Scrollbar discreta ---------- */
 .fde-extra-tab::-webkit-scrollbar { width: 5px; }
 .fde-extra-tab::-webkit-scrollbar-thumb {
@@ -639,7 +862,8 @@
   .fde-fields-grid.cols-4 { grid-template-columns: repeat(2, 1fr); }
 
   .fde-stats-grid,
-  .fde-skill-list { grid-template-columns: 1fr; }
+  .fde-skill-list,
+  .fde-tech-slots-panel { grid-template-columns: 1fr; }
 
   .fde-skill-mainline {
     grid-template-columns: 1fr auto;
@@ -647,6 +871,44 @@
 
   .fde-skill-passive {
     grid-column: 1 / -1;
+  }
+}
+
+/* ---------- Contraste adaptativo para select/input ---------- */
+.fde-field select,
+.fde-field input,
+.fde-learn-filter-field select,
+.fde-learn-filter-field input,
+.fde-inline-field select,
+.fde-inline-field input {
+  color-scheme: light dark;
+  color: CanvasText;
+  background-color: Canvas;
+}
+
+/* Fallback explícito para tema claro */
+@media (prefers-color-scheme: light) {
+  .fde-field select,
+  .fde-field input,
+  .fde-learn-filter-field select,
+  .fde-learn-filter-field input,
+  .fde-inline-field select,
+  .fde-inline-field input {
+    color: #191813;
+    background-color: #f5f5f0;
+  }
+}
+
+/* Fallback explícito para tema escuro */
+@media (prefers-color-scheme: dark) {
+  .fde-field select,
+  .fde-field input,
+  .fde-learn-filter-field select,
+  .fde-learn-filter-field input,
+  .fde-inline-field select,
+  .fde-inline-field input {
+    color: #f5f5f0;
+    background-color: #2a2a26;
   }
 }
 

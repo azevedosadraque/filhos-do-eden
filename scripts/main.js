@@ -1,27 +1,7 @@
 // Filhos do Eden - Main Script
 import { FDEActorSheet } from "./sheets/fde-actor-sheet.js";
 import { HAS_DND5E_CHARACTER_SHEET } from "./sheets/fde-actor-sheet.js";
-
-const FDE_DEFAULT_DATA = {
-  jogador: "",
-  especie: "",
-  casta: "",
-  ciclo: 1,
-  alinhamento: "",
-  experiencia: 0,
-  aura: { value: 0, max: 0 },
-  beneficiosCasta: [""],
-  tecnicas: [
-    {
-      nome: "",
-      nivel: 1,
-      tipo: "divindade",
-      custoAura: 0,
-      descricao: ""
-    }
-  ],
-  outrasPericias: []
-};
+import { createDefaultFDEData } from "./helpers/fde-data.js";
 
 Hooks.once("init", () => {
   console.log("Filhos do Eden | Inicializando módulo");
@@ -44,7 +24,7 @@ Hooks.once("ready", () => {
 
   const sheetOptions = {
     types: ["character"],
-    makeDefault: false,
+    makeDefault: true,
     label: "Filhos do Eden | Ficha"
   };
 
@@ -63,7 +43,9 @@ Hooks.on("renderActorSheet", (app, html) => {
   console.log(`Filhos do Eden | Render confirmado da ficha custom: ${app.actor?.name ?? "(sem nome)"}`);
   // Aguarda o DOM estar totalmente pronto antes de injetar
   setTimeout(() => {
-    app._injectFDETab();
+    const root = app._getSheetElement?.();
+    const hasNativeFDETemplate = Boolean(root?.querySelector("form.fde-sheet"));
+    if (!hasNativeFDETemplate) app._injectFDETab();
     app._bindFDEActions();
   }, 50);
 });
@@ -71,5 +53,5 @@ Hooks.on("renderActorSheet", (app, html) => {
 Hooks.on("createActor", async (actor) => {
   if (actor.type !== "character") return;
   if (actor.getFlag("filhos-do-eden", "data")) return;
-  await actor.setFlag("filhos-do-eden", "data", foundry.utils.deepClone(FDE_DEFAULT_DATA));
+  await actor.setFlag("filhos-do-eden", "data", createDefaultFDEData());
 });
