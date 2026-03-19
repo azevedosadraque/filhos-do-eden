@@ -79,6 +79,8 @@ const FDE_ACTIONS = new Set([
   "advance-cycle"
 ]);
 
+const FDE_INNER_SUBTABS = new Set(["geral", "casta", "tecnicas"]);
+
 function escapeHTML(value) {
   return String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -244,6 +246,56 @@ export class FDEActorSheet extends (DND5ECharacterSheet ?? FallbackActorSheet) {
     return null;
   }
 
+  _getStoredInnerSubtab() {
+    if (typeof this._fdeInnerSubtab === "string" && FDE_INNER_SUBTABS.has(this._fdeInnerSubtab)) {
+      return this._fdeInnerSubtab;
+    }
+
+    const uiState = this.actor?.getFlag?.("filhos-do-eden", "uiState") ?? {};
+    const saved = String(uiState?.innerSubtab ?? "").trim().toLowerCase();
+    this._fdeInnerSubtab = FDE_INNER_SUBTABS.has(saved) ? saved : "geral";
+    return this._fdeInnerSubtab;
+  }
+
+  _persistInnerSubtab(subtab) {
+    const normalized = String(subtab ?? "").trim().toLowerCase();
+    if (!FDE_INNER_SUBTABS.has(normalized)) return;
+    if (this._fdeInnerSubtab === normalized) return;
+
+    this._fdeInnerSubtab = normalized;
+
+    const current = this.actor?.getFlag?.("filhos-do-eden", "uiState") ?? {};
+    if (current?.innerSubtab === normalized) return;
+
+    const nextState = foundry.utils.mergeObject(foundry.utils.deepClone(current), { innerSubtab: normalized }, { inplace: false });
+    void this.actor.setFlag("filhos-do-eden", "uiState", nextState).catch((error) => {
+      console.warn("Filhos do Eden | Não foi possível persistir sub-aba ativa.", error);
+    });
+  }
+
+  _applyInnerSubtab(tabRoot, preferredSubtab) {
+    if (!tabRoot) return null;
+
+    const buttons = Array.from(tabRoot.querySelectorAll("[data-fde-subtab]"));
+    const panels = Array.from(tabRoot.querySelectorAll("[data-fde-panel]"));
+    if (!buttons.length || !panels.length) return null;
+
+    const normalized = String(preferredSubtab ?? "").trim().toLowerCase();
+    const activeButton = buttons.find((button) => button.dataset.fdeSubtab === normalized) ?? buttons[0];
+    const activeKey = activeButton?.dataset?.fdeSubtab;
+    if (!activeKey) return null;
+
+    buttons.forEach((button) => {
+      button.classList.toggle("active", button === activeButton);
+    });
+
+    panels.forEach((panel) => {
+      panel.hidden = panel.dataset.fdePanel !== activeKey;
+    });
+
+    return activeKey;
+  }
+
   static get defaultOptions() {
     return foundry.utils.mergeObject(super.defaultOptions, {
       classes: ["dnd5e", "sheet", "actor", "filhos-do-eden"],
@@ -313,14 +365,14 @@ export class FDEActorSheet extends (DND5ECharacterSheet ?? FallbackActorSheet) {
         const tabRoot = button.closest(".fde-extra-tab") ?? root;
         if (!subtab || !tabRoot) return;
 
-        tabRoot.querySelectorAll("[data-fde-subtab]").forEach((el) => el.classList.remove("active"));
-        tabRoot.querySelectorAll("[data-fde-panel]").forEach((panel) => { panel.hidden = true; });
-
-        button.classList.add("active");
-        const target = tabRoot.querySelector(`[data-fde-panel="${subtab}"]`);
-        if (target) target.hidden = false;
+        const active = this._applyInnerSubtab(tabRoot, subtab);
+        if (active) this._persistInnerSubtab(active);
       });
     });
+
+    const subtabRoot = root.querySelector(".fde-extra-tab") ?? root;
+    const restored = this._applyInnerSubtab(subtabRoot, this._getStoredInnerSubtab());
+    if (restored) this._fdeInnerSubtab = restored;
 
     root.querySelectorAll("[data-fde-learn-filter]").forEach((control) => {
       if (control.dataset.fdeLearnFilterBound === "1") return;
@@ -405,6 +457,9 @@ export class FDEActorSheet extends (DND5ECharacterSheet ?? FallbackActorSheet) {
     scroll.prepend(panelCasta);
     scroll.prepend(panelGeral);
     scroll.prepend(nav);
+
+    const restored = this._applyInnerSubtab(tabSection, this._getStoredInnerSubtab());
+    if (restored) this._fdeInnerSubtab = restored;
   }
 
   async _onSystemFieldChange(event) {
