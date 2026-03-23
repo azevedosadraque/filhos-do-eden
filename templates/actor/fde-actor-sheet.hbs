@@ -24,9 +24,11 @@
 
         <div>
           <label>Casta</label>
-          <select name="fde.casta">
+          <select name="fde.casta" {{#if fde.casta}}disabled{{/if}}>
+            <option value="" {{#unless fde.casta}}selected{{/unless}}>Escolher...</option>
             {{selectOptions castas selected=fde.casta}}
           </select>
+          {{#if fde.casta}}<small class="fde-lock-hint">Casta travada. Use "Resetar Ficha" para escolher outra.</small>{{/if}}
         </div>
 
         <div>
@@ -52,6 +54,11 @@
         <div>
           <label>Aura Máxima</label>
           <input type="number" name="fde.aura.max" value="{{fde.aura.max}}" />
+        </div>
+
+        <div>
+          <label>&nbsp;</label>
+          <button type="button" class="fde-btn-reset" data-action="reset-sheet">Resetar Ficha</button>
         </div>
       </div>
     </div>
@@ -92,18 +99,142 @@
             <span>Perícia</span>
             <span>Atributo</span>
             <span>Total</span>
-            <span>Passiva</span>
-            <span>Prof.</span>
+            <span>Status</span>
+            <span>Origem</span>
           </div>
           {{#each skills}}
             <div class="fde-table-row">
               <span>{{this.label}}</span>
               <span>{{this.ability}}</span>
-              <span>{{this.total}}</span>
-              <span>{{this.passive}}</span>
-              <span>{{this.proficiency}}</span>
+              <span>{{this.totalLabel}}</span>
+              <span class="fde-badge-list">
+                {{#each this.statusBadges}}
+                  <span class="fde-origin-badge is-{{this.tone}}">{{this.label}}</span>
+                {{else}}
+                  <span class="fde-origin-badge is-muted">{{../this.proficiency}}</span>
+                {{/each}}
+              </span>
+              <span class="fde-badge-list">
+                {{#each this.originBadges}}
+                  <span class="fde-origin-badge is-{{this.tone}}">{{this.label}}</span>
+                {{else}}
+                  <span class="fde-origin-badge is-neutral">{{../this.origin}}</span>
+                {{/each}}
+              </span>
             </div>
           {{/each}}
+        </div>
+      </section>
+
+      <section class="fde-section">
+        <div class="fde-section-header">
+          <h2>Ferramentas</h2>
+        </div>
+        <div class="fde-table">
+          <div class="fde-table-head">
+            <span>Ferramenta</span>
+            <span>Atributo</span>
+            <span>Total</span>
+            <span>Status</span>
+            <span>Origem</span>
+          </div>
+          {{#each fdeTools}}
+            <div class="fde-table-row">
+              <span>{{this.label}}</span>
+              <span>
+                <select name="fde.ferramentas.atributos.{{this.id}}">
+                  {{selectOptions this.abilityOptions selected=this.abilityId}}
+                </select>
+              </span>
+              <span>{{this.totalLabel}}</span>
+              <span class="fde-badge-list">
+                {{#each this.statusBadges}}
+                  <span class="fde-origin-badge is-{{this.tone}}">{{this.label}}</span>
+                {{else}}
+                  <span class="fde-origin-badge is-muted">{{../this.proficiency}}</span>
+                {{/each}}
+              </span>
+              <span class="fde-badge-list">
+                {{#each this.originBadges}}
+                  <span class="fde-origin-badge is-{{this.tone}}">{{this.label}}</span>
+                {{else}}
+                  <span class="fde-origin-badge is-neutral">{{../this.origin}}</span>
+                {{/each}}
+              </span>
+            </div>
+          {{else}}
+            <p>Nenhuma ferramenta treinada ou catalogada para exibição.</p>
+          {{/each}}
+        </div>
+      </section>
+
+      <section class="fde-section">
+        <div class="fde-section-header">
+          <h2>Progressão de Perícias</h2>
+        </div>
+        <div class="fde-stack">
+          <div class="fde-inline-summary">
+            <span>Bônus de Proficiência Atual: <strong>+{{fdeCurrentProfBonus}}</strong></span>
+            {{#if fdeCurrentCastaPackage}}
+              <span>Pacote da Casta: <strong>{{fdeCurrentCastaPackage.nome}}</strong></span>
+            {{/if}}
+          </div>
+
+          <div class="fde-sub-header">
+            <h5>Escolhas Pendentes</h5>
+          </div>
+          <div class="fde-stack">
+            {{#each fdePendingChoices}}
+              <div class="fde-pending-row">
+                <div>
+                  <strong>{{this.label}}</strong>
+                  <div class="fde-meta">{{this.allowedLabel}}</div>
+                </div>
+                {{#if this.isExpertise}}
+                  <button type="button" data-action="resolve-expertise-choice" data-pending-id="{{this.id}}">Escolher</button>
+                {{else}}
+                  <button type="button" data-action="resolve-proficiency-choice" data-pending-id="{{this.id}}">Escolher</button>
+                {{/if}}
+              </div>
+            {{else}}
+              <p>Nenhuma escolha pendente.</p>
+            {{/each}}
+          </div>
+
+          <div class="fde-sub-header">
+            <h5>Histórico por Ciclo</h5>
+          </div>
+          <div class="fde-stack">
+            {{#each fdeProgressionHistory}}
+              <div class="fde-history-row">
+                <span><strong>{{this.cycle}}º ciclo</strong></span>
+                <span>{{#if this.resolved}}{{this.resolution}}{{else}}Pendente{{/if}}</span>
+              </div>
+            {{else}}
+              <p>Nenhum ganho por ciclo registrado ainda.</p>
+            {{/each}}
+          </div>
+
+          {{#if hasFdeAltWeaponProfs}}
+            <div class="fde-sub-header"><h5>Proficiências Alternativas de Arma</h5></div>
+            <div class="fde-stack">
+              {{#each fdeAltWeaponProfs}}<div class="fde-history-row"><span>{{this.label}}</span></div>{{/each}}
+            </div>
+          {{/if}}
+
+          {{#if hasFdeAltArmorProfs}}
+            <div class="fde-sub-header"><h5>Proficiências Alternativas de Armadura</h5></div>
+            <div class="fde-stack">
+              {{#each fdeAltArmorProfs}}<div class="fde-history-row"><span>{{this.label}}</span></div>{{/each}}
+            </div>
+          {{/if}}
+
+          {{#if hasFdeAltShieldProfs}}
+            <div class="fde-sub-header"><h5>Proficiência em Escudo</h5></div>
+            <div class="fde-stack">
+              {{#each fdeAltShieldProfs}}<div class="fde-history-row"><span>{{this.label}}</span></div>{{/each}}
+            </div>
+          {{/if}}
         </div>
       </section>
 

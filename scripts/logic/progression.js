@@ -3,7 +3,10 @@ import { getCasta } from "../data/castas.js";
 import { getTechnique, getTechniques } from "../data/tecnicas.js";
 import { buildActorProgressionUpdate, createProgressionChatCard, getAverageHitPointsByCycle, getConModifier, parseHitDieSize, syncDerivedFeatureItems } from "../helpers/actor-updates.js";
 import { FDE_MODULE_ID, getFDEData, normalizeFDEData, setFDEData } from "../helpers/fde-data.js";
+import { grantCycleSkillChoice, recalculateAllSkillData } from "./progression-skills.js";
 import { canLearnTechnique, validateCycleChange, validateTechniqueKnownCounts } from "./validations.js";
+
+const FDE_ABILITY_ORDER = ["str", "dex", "con", "int", "wis", "cha"];
 
 export function getLeaderDieByCycle(cycle) {
   if (cycle >= 6) return "1d10";
@@ -116,6 +119,61 @@ function computePendingTechniqueChoices(fdeData) {
   return remaining;
 }
 
+function normalizeAbilityProficiency(value, fallback = 0) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(0, Math.min(2, Math.trunc(parsed)));
+}
+
+function synchronizeTechniqueState(fdeData, unlockedTechniques) {
+  const unlockedIds = new Set((unlockedTechniques ?? []).map((entry) => String(entry?.id ?? "")).filter(Boolean));
+  fdeData.tecnicasLiberadas = [...unlockedIds];
+  fdeData.tecnicasConhecidas = (fdeData.tecnicasConhecidas ?? []).filter((id) => unlockedIds.has(String(id ?? "")) && getTechnique(id));
+}
+
+function synchronizeExtraSaveState(actor, fdeData) {
+  const actorAbilities = actor?.system?.abilities ?? {};
+  const base = {};
+
+  for (const abilityKey of FDE_ABILITY_ORDER) {
+    const storedBase = fdeData.salvaguardas?.base?.[abilityKey];
+    const actorValue = actorAbilities?.[abilityKey]?.proficient;
+    base[abilityKey] = normalizeAbilityProficiency(storedBase, normalizeAbilityProficiency(actorValue, 0));
+  }
+
+  const maxExtras = Math.max(0, Number(fdeData.progressao?.extraSalvaguardas ?? 0));
+  let extras = Array.isArray(fdeData.salvaguardas?.extras)
+    ? fdeData.salvaguardas.extras.map((entry) => String(entry ?? "").trim().toLowerCase()).filter((entry) => FDE_ABILITY_ORDER.includes(entry))
+    : [];
+
+  extras = [...new Set(extras)].filter((abilityKey) => base[abilityKey] < 1).slice(0, maxExtras);
+
+  const available = FDE_ABILITY_ORDER.filter((abilityKey) => base[abilityKey] < 1 && !extras.includes(abilityKey));
+  while (extras.length < maxExtras && available.length) {
+    extras.push(available.shift());
+  }
+
+  fdeData.salvaguardas.base = base;
+  fdeData.salvaguardas.extras = extras;
+  fdeData.escolhasPendentes.salvaguarda = Math.max(0, maxExtras - extras.length);
+}
+
+function buildExtraSaveSyncUpdate(actor, fdeData) {
+  const update = {};
+  const extras = new Set(fdeData.salvaguardas?.extras ?? []);
+
+  for (const abilityKey of FDE_ABILITY_ORDER) {
+    const currentValue = normalizeAbilityProficiency(actor?.system?.abilities?.[abilityKey]?.proficient, 0);
+    const baseValue = normalizeAbilityProficiency(fdeData.salvaguardas?.base?.[abilityKey], currentValue);
+    const nextValue = Math.max(baseValue, extras.has(abilityKey) ? 1 : 0);
+    if (currentValue !== nextValue) {
+      update[`system.abilities.${abilityKey}.proficient`] = nextValue;
+    }
+  }
+
+  return update;
+}
+
 function deriveProgressionState(actor, fdeData, cycle, casta) {
   const cycleData = getCycleData(cycle);
   const castaProgression = getCastaProgression(casta.id, cycle);
@@ -161,18 +219,44 @@ function deriveProgressionState(actor, fdeData, cycle, casta) {
     tecnicasConhecidas: knownTechniqueIds
   });
 
+  synchronizeTechniqueState(nextData, unlockedTechniques);
+  synchronizeExtraSaveState(actor, nextData);
+
   if (castaProgression.derived.provinceRequired) {
     nextData.recursosCasta.provincia = nextData.recursosCasta?.provincia ?? "";
   }
 
   const chosenExpertise = nextData.recursosCasta?.especializacoes?.length ?? 0;
   nextData.escolhasPendentes.pericia = Math.max(0, cycle - 1);
-  nextData.escolhasPendentes.salvaguarda = cycleData.extraSaveChoices;
   nextData.escolhasPendentes.tecnica = computePendingTechniqueChoices(nextData);
   nextData.escolhasPendentes.especializacao = Math.max(0, castaProgression.derived.expertiseChoices - chosenExpertise);
   nextData.escolhasPendentes.provincia = castaProgression.derived.provinceRequired && !nextData.recursosCasta?.provincia ? 1 : 0;
 
   return { nextData, cycleData, castaProgression, unlockedTechniques, hpMax, auraMax };
+}
+
+export async function synchronizeDerivedProgression(actor, sourceData = null) {
+  const current = normalizeFDEData(sourceData ?? getFDEData(actor));
+  const casta = getCasta(current.casta);
+  if (!casta) return { ok: false, reason: "Casta não definida para sincronizar progressão." };
+
+  const derived = deriveProgressionState(actor, current, Number(current.ciclo ?? 1), casta);
+  const nextData = normalizeFDEData({
+    ...current,
+    ...derived.nextData,
+    historicoProgressao: current.historicoProgressao ?? []
+  });
+
+  await setFDEData(actor, nextData);
+  const actorUpdate = foundry.utils.mergeObject(buildActorProgressionUpdate(actor, nextData), buildExtraSaveSyncUpdate(actor, nextData), { inplace: false, insertKeys: true, overwrite: true });
+  await actor.update(actorUpdate);
+
+  return {
+    ok: true,
+    casta,
+    cycle: nextData.ciclo,
+    data: nextData
+  };
 }
 
 export function previewCycleUpgrade(actor, newCycle) {
@@ -230,6 +314,8 @@ export async function applyCycleProgression(actor, newCycle) {
   const preview = previewCycleUpgrade(actor, newCycle);
   if (!preview.ok) return preview;
 
+  const previousCycle = Number(getFDEData(actor)?.ciclo ?? 1);
+
   const dataToApply = preview.nextData;
   dataToApply.historicoProgressao = [...(dataToApply.historicoProgressao ?? []), {
     timestamp: new Date().toISOString(),
@@ -241,6 +327,10 @@ export async function applyCycleProgression(actor, newCycle) {
 
   await setFDEData(actor, dataToApply);
   await actor.update(buildActorProgressionUpdate(actor, dataToApply));
+  for (let cycle = previousCycle + 1; cycle <= Number(newCycle); cycle += 1) {
+    await grantCycleSkillChoice(actor, cycle);
+  }
+  await recalculateAllSkillData(actor);
   await syncDerivedFeatureItems(actor, dataToApply);
 
   const content = createProgressionChatCard(actor, preview);

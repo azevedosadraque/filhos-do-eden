@@ -180,6 +180,17 @@
   border-color: var(--dnd5e-color-gold, #c9a227);
 }
 
+.fde-item-list .fde-item-row input[name^="fde.beneficiosCasta"],
+.fde-stack .fde-inline-fields input[name^="fde.beneficiosCasta"] {
+  color: #000 !important;
+  -webkit-text-fill-color: #000;
+}
+
+.fde-item-list .fde-item-row input[name^="fde.beneficiosCasta"]::placeholder,
+.fde-stack .fde-inline-fields input[name^="fde.beneficiosCasta"]::placeholder {
+  color: rgba(0, 0, 0, 0.72) !important;
+}
+
 /* ---------- Botão Adicionar ---------- */
 .fde-btn-add {
   display: inline-flex;
@@ -314,7 +325,7 @@
 }
 
 .fde-btn-advance {
-  align-self: flex-start;
+  align-self: center;
   padding: 4px 10px;
   border: 1px solid color-mix(in srgb, var(--color-border-light-tertiary, #7a7971) 70%, #000 30%);
   border-radius: 4px;
@@ -327,10 +338,53 @@
   background: var(--dnd5e-color-gold, #c9a227);
 }
 
+.fde-btn-reset {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  padding: 4px 12px;
+  border: 1px solid rgba(150, 52, 52, 0.52);
+  border-radius: 4px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  color: #fff;
+  background: linear-gradient(180deg, #9f4f4f 0%, #7f3636 100%);
+  white-space: nowrap;
+}
+
+.fde-btn-reset:hover {
+  filter: brightness(1.08);
+}
+
+.fde-cycle-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .fde-cycle-max {
   font-size: 0.78rem;
   font-style: italic;
   opacity: 0.9;
+}
+
+.fde-lock-hint {
+  margin: 3px 0 0;
+  display: block;
+  font-size: 0.68rem;
+  color: color-mix(in srgb, var(--color-text-dark-primary, #191813) 75%, #6b2020 25%);
+  line-height: 1.2;
+}
+
+.fde-field select:disabled {
+  opacity: 0.8;
+  cursor: not-allowed;
+  background: color-mix(in srgb, var(--dnd5e-color-card, #ffffff) 85%, #000 15%);
 }
 
 .fde-learn-dialog {
@@ -670,6 +724,52 @@
   color: var(--color-text-dark-primary, #191813);
   font-size: 0.72rem;
   box-sizing: border-box;
+}
+
+.fde-radio-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.fde-radio-pill {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.fde-radio-pill span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  border: 1px solid color-mix(in srgb, var(--color-border-light-tertiary, #7a7971) 65%, #000 35%);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--dnd5e-color-card, #ffffff) 92%, #000 8%);
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1;
+  padding: 0 6px;
+}
+
+.fde-radio-pill input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+  width: 1px;
+  height: 1px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+}
+
+.fde-radio-pill input:checked + span {
+  border-color: var(--dnd5e-color-gold, #c9a227);
+  background: color-mix(in srgb, var(--dnd5e-color-gold, #c9a227) 32%, var(--dnd5e-color-card, #ffffff) 68%);
+  color: #111;
 }
 
 .fde-tech-card.tipo-profanacao {
@@ -1249,6 +1349,28 @@
   padding: 6px 8px;
 }
 
+.fde-sheet .fde-item-roll-row {
+  grid-template-columns: 1fr auto;
+}
+
+.fde-compendium-dropzone {
+  border: 1px dashed color-mix(in srgb, var(--dnd5e-color-gold, #c9a227) 62%, #000 38%);
+  border-radius: 6px;
+  padding: 10px;
+  margin-bottom: 8px;
+  text-align: center;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  background: color-mix(in srgb, var(--dnd5e-color-card, #ffffff) 88%, var(--dnd5e-color-gold, #c9a227) 12%);
+}
+
+.fde-compendium-dropzone.is-dragover {
+  border-style: solid;
+  border-color: var(--dnd5e-color-gold, #c9a227);
+  box-shadow: 0 0 0 1px var(--dnd5e-color-gold, #c9a227) inset;
+}
+
 .fde-sheet .fde-item-icon {
   width: 28px;
   height: 28px;
@@ -1292,6 +1414,104 @@
 .fde-sheet .fde-footer button {
   padding: 4px 10px;
   font-size: 0.74rem;
+}
+
+.fde-sheet .fde-inline-summary,
+.fde-sheet .fde-pending-row,
+.fde-sheet .fde-history-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.fde-sheet .fde-inline-summary {
+  flex-wrap: wrap;
+  font-size: 0.78rem;
+}
+
+.fde-sheet .fde-pending-row,
+.fde-sheet .fde-history-row {
+  padding: 6px 8px;
+  border: 1px solid color-mix(in srgb, var(--color-border-light-tertiary, #7a7971) 68%, #000 32%);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--dnd5e-color-card, #ffffff) 92%, #000 8%);
+}
+
+.fde-sheet .fde-pending-row button,
+.fde-sheet .fde-history-row button,
+.fde-sheet .fde-table-row select {
+  height: 24px;
+}
+
+.fde-sheet .fde-badge-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.fde-sheet .fde-origin-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 18px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--color-border-light-tertiary, #7a7971) 68%, #000 32%);
+  background: color-mix(in srgb, var(--dnd5e-color-card, #ffffff) 94%, #000 6%);
+  color: var(--color-text-dark-primary, #191813);
+  font-size: 0.63rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  line-height: 1.2;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.fde-sheet .fde-origin-badge.is-casta {
+  background: color-mix(in srgb, var(--dnd5e-color-gold, #c9a227) 24%, var(--dnd5e-color-card, #ffffff) 76%);
+  border-color: color-mix(in srgb, var(--dnd5e-color-gold, #c9a227) 70%, #000 30%);
+}
+
+.fde-sheet .fde-origin-badge.is-choice {
+  background: color-mix(in srgb, #3f6ea8 18%, var(--dnd5e-color-card, #ffffff) 82%);
+  border-color: color-mix(in srgb, #3f6ea8 52%, var(--color-border-light-tertiary, #7a7971) 48%);
+}
+
+.fde-sheet .fde-origin-badge.is-cycle {
+  background: color-mix(in srgb, #3f8a5a 18%, var(--dnd5e-color-card, #ffffff) 82%);
+  border-color: color-mix(in srgb, #3f8a5a 48%, var(--color-border-light-tertiary, #7a7971) 52%);
+}
+
+.fde-sheet .fde-origin-badge.is-expertise {
+  background: color-mix(in srgb, #7f5bd6 18%, var(--dnd5e-color-card, #ffffff) 82%);
+  border-color: color-mix(in srgb, #7f5bd6 55%, var(--color-border-light-tertiary, #7a7971) 45%);
+}
+
+.fde-sheet .fde-origin-badge.is-trained {
+  background: color-mix(in srgb, #2b7a4b 14%, var(--dnd5e-color-card, #ffffff) 86%);
+  border-color: color-mix(in srgb, #2b7a4b 48%, var(--color-border-light-tertiary, #7a7971) 52%);
+}
+
+.fde-sheet .fde-origin-badge.is-half {
+  background: color-mix(in srgb, #8b6b2b 14%, var(--dnd5e-color-card, #ffffff) 86%);
+  border-color: color-mix(in srgb, #8b6b2b 48%, var(--color-border-light-tertiary, #7a7971) 52%);
+}
+
+.fde-sheet .fde-origin-badge.is-manual,
+.fde-sheet .fde-origin-badge.is-neutral {
+  background: color-mix(in srgb, #5a6470 12%, var(--dnd5e-color-card, #ffffff) 88%);
+  border-color: color-mix(in srgb, #5a6470 42%, var(--color-border-light-tertiary, #7a7971) 58%);
+}
+
+.fde-sheet .fde-origin-badge.is-muted {
+  opacity: 0.85;
+}
+
+.fde-sheet .fde-table-row select {
+  width: 100%;
+  min-width: 84px;
 }
 
 .fde-sheet p {

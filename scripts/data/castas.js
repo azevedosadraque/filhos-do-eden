@@ -513,6 +513,149 @@ export const CASTAS = Object.freeze({
   })
 });
 
+export const CASTA_SKILL_PACKAGES = Object.freeze({
+  querubim: Object.freeze({
+    id: "querubim",
+    nome: "Querubim",
+    periciasFixas: ["prc", "ath"],
+    escolhasPericia: 2,
+    ferramentasFixas: [],
+    escolhasFerramenta: 1,
+    especializacoesIniciais: 0,
+    especializacoesPorCiclo: {}
+  }),
+  serafim: Object.freeze({
+    id: "serafim",
+    nome: "Serafim",
+    periciasFixas: ["per", "ins"],
+    escolhasPericia: 2,
+    ferramentasFixas: [],
+    escolhasFerramenta: 1,
+    especializacoesIniciais: 0,
+    especializacoesPorCiclo: {}
+  }),
+  elohim: Object.freeze({
+    id: "elohim",
+    nome: "Elohim",
+    periciasFixas: ["dec", "his"],
+    escolhasPericia: 2,
+    ferramentasFixas: [],
+    escolhasFerramenta: 3,
+    especializacoesIniciais: 0,
+    especializacoesPorCiclo: {}
+  }),
+  ofanim: Object.freeze({
+    id: "ofanim",
+    nome: "Ofanim",
+    periciasFixas: ["per", "med"],
+    escolhasPericia: 2,
+    ferramentasFixas: [],
+    escolhasFerramenta: 1,
+    especializacoesIniciais: 0,
+    especializacoesPorCiclo: {}
+  }),
+  hashmalim: Object.freeze({
+    id: "hashmalim",
+    nome: "Hashmalim",
+    periciasFixas: ["arc", "itm"],
+    escolhasPericia: 2,
+    ferramentasFixas: [],
+    escolhasFerramenta: 1,
+    especializacoesIniciais: 0,
+    especializacoesPorCiclo: {}
+  }),
+  ishim: Object.freeze({
+    id: "ishim",
+    nome: "Ishim",
+    periciasFixas: ["sur", "nat"],
+    escolhasPericia: 2,
+    ferramentasFixas: [],
+    escolhasFerramenta: 2,
+    especializacoesIniciais: 0,
+    especializacoesPorCiclo: {}
+  }),
+  malakin: Object.freeze({
+    id: "malakin",
+    nome: "Malakin",
+    periciasFixas: ["rel", "arc"],
+    escolhasPericia: 2,
+    ferramentasFixas: [],
+    escolhasFerramenta: 3,
+    especializacoesIniciais: 2,
+    especializacoesPorCiclo: { 3: 2, 6: 2 }
+  }),
+  malikis: Object.freeze({
+    id: "malikis",
+    nome: "Malikis",
+    periciasFixas: ["itm", "ath"],
+    escolhasPericia: 2,
+    ferramentasFixas: [],
+    escolhasFerramenta: 1,
+    especializacoesIniciais: 0,
+    especializacoesPorCiclo: {}
+  }),
+  satanis: Object.freeze({
+    id: "satanis",
+    nome: "Satanis",
+    periciasFixas: ["per", "ins"],
+    escolhasPericia: 2,
+    ferramentasFixas: [],
+    escolhasFerramenta: 1,
+    especializacoesIniciais: 0,
+    especializacoesPorCiclo: {}
+  }),
+  belial: Object.freeze({
+    id: "belial",
+    nome: "Belial",
+    periciasFixas: ["dec", "arc"],
+    escolhasPericia: 2,
+    ferramentasFixas: [],
+    escolhasFerramenta: 3,
+    especializacoesIniciais: 0,
+    especializacoesPorCiclo: {}
+  }),
+  daimoniun: Object.freeze({
+    id: "daimoniun",
+    nome: "Daimoniun",
+    periciasFixas: ["dec", "itm"],
+    escolhasPericia: 2,
+    ferramentasFixas: [],
+    escolhasFerramenta: 2,
+    especializacoesIniciais: 0,
+    especializacoesPorCiclo: {}
+  }),
+  baal: Object.freeze({
+    id: "baal",
+    nome: "Baal",
+    periciasFixas: ["itm", "ins"],
+    escolhasPericia: 2,
+    ferramentasFixas: [],
+    escolhasFerramenta: 2,
+    especializacoesIniciais: 0,
+    especializacoesPorCiclo: {}
+  }),
+  zanathus: Object.freeze({
+    id: "zanathus",
+    nome: "Zanathus",
+    periciasFixas: ["sur", "nat"],
+    escolhasPericia: 2,
+    ferramentasFixas: [],
+    escolhasFerramenta: 2,
+    especializacoesIniciais: 0,
+    especializacoesPorCiclo: {}
+  }),
+  "succubus-incubus": Object.freeze({
+    id: "succubus-incubus",
+    nome: "Succubus/Incubus",
+    periciasFixas: ["dec", "prf"],
+    escolhasPericia: 2,
+    ferramentasFixas: [],
+    escolhasFerramenta: 2,
+    especializacoesIniciais: 0,
+    especializacoesPorCiclo: {}
+  })
+});
+
 export function normalizeCastaId(value) {
   const normalized = String(value ?? "")
     .normalize("NFD")
@@ -536,6 +679,11 @@ export function normalizeCastaId(value) {
 
 export function getCasta(idOrName) {
   return CASTAS[normalizeCastaId(idOrName)] ?? null;
+}
+
+export function getCastaSkillPackage(idOrName) {
+  const castaId = normalizeCastaId(idOrName);
+  return CASTA_SKILL_PACKAGES[castaId] ?? null;
 }
 
 export function getCastaOptions() {

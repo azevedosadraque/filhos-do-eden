@@ -1,7 +1,14 @@
 import { getCycleData } from "../data/cycles.js";
-import { getCasta, getCastaOptions } from "../data/castas.js";
+import { getCasta, getCastaOptions, getCastaSkillPackage } from "../data/castas.js";
+import { getSkillLabel, normalizeSkillId } from "../data/skills.js";
+import { getToolLabel } from "../data/tools.js";
 import { getTechnique } from "../data/tecnicas.js";
+import { resetManagedProficiencyState, synchronizeActorSkillState } from "../helpers/actor-skills.js";
+import { createDefaultFDEData, resetFDEDataForCastaChange, setFDEData } from "../helpers/fde-data.js";
 import { applyCycleProgression, getUnlockedTechniques, learnTechnique, previewCycleUpgrade } from "../logic/progression.js";
+import { applySkillOrToolChoice, recalculateAllSkillData } from "../logic/progression-skills.js";
+import { getAvailableExpertiseSkillChoices, getAvailableSkillChoices, getSkillProficiencyLevel, getSkillRows, getSkillTotal } from "../logic/skills.js";
+import { getAvailableExpertiseToolChoices, getAvailableToolChoices, getToolRows } from "../logic/tools.js";
 import { validateTechniqueKnownCounts } from "../logic/validations.js";
 
 const DND5ECharacterSheet = globalThis.dnd5e?.applications?.actor?.CharacterActorSheet
@@ -74,12 +81,15 @@ const FDE_ACTIONS = new Set([
   "learn-technique",
   "confirm-learn-technique",
   "close-learn-inline",
+  "resolve-proficiency-choice",
+  "resolve-expertise-choice",
+  "reset-sheet",
   "add-tecnica",
   "remove-tecnica",
   "advance-cycle"
 ]);
 
-const FDE_INNER_SUBTABS = new Set(["geral", "casta", "tecnicas"]);
+const FDE_INNER_SUBTABS = new Set(["geral", "casta", "itens", "tecnicas"]);
 
 function escapeHTML(value) {
   return String(value ?? "")
@@ -88,6 +98,22 @@ function escapeHTML(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+function toIndexedArray(value) {
+  if (Array.isArray(value)) return value;
+  if (value == null) return [];
+
+  if (typeof value === "object") {
+    const entries = Object.entries(value)
+      .filter(([key]) => /^\d+$/.test(key))
+      .sort((a, b) => Number(a[0]) - Number(b[0]));
+
+    if (entries.length) return entries.map(([, entryValue]) => entryValue);
+    return [];
+  }
+
+  return [value];
 }
 
 function normalizeFDEData(data = {}) {
@@ -100,6 +126,15 @@ function normalizeFDEData(data = {}) {
   const contratosRaw = data.recursosCasta?.contratos ?? FDE_DEFAULT_DATA.recursosCasta.contratos;
   const especializacoesRaw = data.recursosCasta?.especializacoes ?? FDE_DEFAULT_DATA.recursosCasta.especializacoes;
   const provinciaEfeitosRaw = data.recursosCasta?.provinciaEfeitos ?? FDE_DEFAULT_DATA.recursosCasta.provinciaEfeitos;
+
+  const beneficiosList = toIndexedArray(beneficiosRaw);
+  const outrasPericiasList = toIndexedArray(outrasPericiasRaw);
+  const tecnicasList = toIndexedArray(tecnicasRaw);
+  const contatosList = toIndexedArray(contatosRaw);
+  const recursosList = toIndexedArray(recursosRaw);
+  const contratosList = toIndexedArray(contratosRaw);
+  const especializacoesList = toIndexedArray(especializacoesRaw);
+  const provinciaEfeitosList = toIndexedArray(provinciaEfeitosRaw);
 
   return {
     ...base,
@@ -125,26 +160,26 @@ function normalizeFDEData(data = {}) {
     recursosCasta: {
       ...(base.recursosCasta ?? {}),
       provincia: String(data.recursosCasta?.provincia ?? base.recursosCasta?.provincia ?? FDE_DEFAULT_DATA.recursosCasta.provincia),
-      provinciaEfeitos: (Array.isArray(provinciaEfeitosRaw) ? provinciaEfeitosRaw : [provinciaEfeitosRaw]).map((item) => String(item ?? "")).filter(Boolean),
-      contatos: (Array.isArray(contatosRaw) ? contatosRaw : [contatosRaw]).map((item) => String(item ?? "")),
-      recursos: (Array.isArray(recursosRaw) ? recursosRaw : [recursosRaw]).map((item) => String(item ?? "")),
-      contratos: (Array.isArray(contratosRaw) ? contratosRaw : [contratosRaw]).map((item) => String(item ?? "")),
-      especializacoes: (Array.isArray(especializacoesRaw) ? especializacoesRaw : [especializacoesRaw]).map((item) => String(item ?? "")),
+      provinciaEfeitos: provinciaEfeitosList.map((item) => String(item ?? "")).filter(Boolean),
+      contatos: contatosList.map((item) => String(item ?? "")),
+      recursos: recursosList.map((item) => String(item ?? "")),
+      contratos: contratosList.map((item) => String(item ?? "")),
+      especializacoes: especializacoesList.map((item) => String(item ?? "")),
       possessao: {
         ...(base.recursosCasta?.possessao ?? {}),
         hospedeiro: String(data.recursosCasta?.possessao?.hospedeiro ?? base.recursosCasta?.possessao?.hospedeiro ?? FDE_DEFAULT_DATA.recursosCasta.possessao.hospedeiro),
         observacoes: String(data.recursosCasta?.possessao?.observacoes ?? base.recursosCasta?.possessao?.observacoes ?? FDE_DEFAULT_DATA.recursosCasta.possessao.observacoes)
       }
     },
-    beneficiosCasta: (Array.isArray(beneficiosRaw) ? beneficiosRaw : [beneficiosRaw]).map((item) => String(item ?? "")),
-    tecnicas: (Array.isArray(tecnicasRaw) ? tecnicasRaw : [tecnicasRaw]).map((tecnica) => ({
+    beneficiosCasta: beneficiosList.map((item) => String(item ?? "")),
+    tecnicas: tecnicasList.map((tecnica) => ({
       nome: tecnica?.nome ?? "",
       nivel: Number(tecnica?.nivel ?? 1),
       tipo: tecnica?.tipo === "profanacao" ? "profanacao" : "divindade",
       custoAura: Number(tecnica?.custoAura ?? 0),
       descricao: tecnica?.descricao ?? ""
     })),
-    outrasPericias: (Array.isArray(outrasPericiasRaw) ? outrasPericiasRaw : [outrasPericiasRaw]).map((item) => String(item ?? ""))
+    outrasPericias: outrasPericiasList.map((item) => String(item ?? ""))
   };
 }
 
@@ -201,8 +236,8 @@ export class FDEActorSheet extends (DND5ECharacterSheet ?? FallbackActorSheet) {
 
       if ("value" in skillData) {
         const rawValue = this._scalarFromFormValue(skillData.value);
-        const parsed = this._toNumber(rawValue, 0);
-        skillData.value = Math.round(parsed * 2) / 2;
+        const parsed = Math.trunc(this._toNumber(rawValue, 0));
+        skillData.value = Math.max(0, Math.min(2, parsed));
       }
 
       if (skillData.bonuses && typeof skillData.bonuses === "object" && "check" in skillData.bonuses) {
@@ -308,7 +343,53 @@ export class FDEActorSheet extends (DND5ECharacterSheet ?? FallbackActorSheet) {
 
   async getData(options) {
     const context = await super.getData(options);
-    context.fde = normalizeFDEData(this.actor.getFlag("filhos-do-eden", "data") ?? {});
+    const fde = normalizeFDEData(this.actor.getFlag("filhos-do-eden", "data") ?? {});
+    const pendingChoices = (fde.pericias?.pendencias ?? [])
+      .filter((entry) => !entry?.resolved)
+      .map((entry) => ({
+        id: entry.id,
+        label: entry.label ?? "Escolha pendente",
+        source: entry.source,
+        cycle: entry.cycle,
+        isExpertise: (entry.allowed ?? []).some((item) => String(item).startsWith("expertise")),
+        allowedLabel: (entry.allowed ?? []).map((item) => {
+          switch (item) {
+            case "skill": return "Perícia";
+            case "tool": return "Ferramenta";
+            case "weapon": return "Arma";
+            case "armor": return "Armadura";
+            case "shield": return "Escudo";
+            case "expertise-skill": return "Especialização em perícia";
+            case "expertise-tool": return "Especialização em ferramenta";
+            default: return item;
+          }
+        }).join(" / ")
+      }));
+
+    const progressionHistory = (fde.pericias?.ganhosPorCiclo ?? []).map((entry) => ({
+      cycle: entry.cycle,
+      resolved: Boolean(entry.resolved),
+      resolution: entry.resolution?.type === "skill"
+        ? `${getSkillLabel(entry.resolution.target)}`
+        : entry.resolution?.type === "tool"
+          ? `${getToolLabel(entry.resolution.target)}`
+          : entry.resolution?.target ?? "Pendente"
+    }));
+
+    context.fde = fde;
+    context.castas = getCastaOptions();
+    context.skills = getSkillRows(this.actor);
+    context.fdeTools = getToolRows(this.actor);
+    context.fdePendingChoices = pendingChoices;
+    context.fdeProgressionHistory = progressionHistory;
+    context.fdeCurrentProfBonus = fde.progressao?.bonusProficiencia ?? Number(this.actor?.system?.attributes?.prof ?? 2);
+    context.fdeCurrentCastaPackage = getCastaSkillPackage(fde.casta);
+    context.fdeAltWeaponProfs = fde.proficienciasAlternativas?.armas ?? [];
+    context.fdeAltArmorProfs = fde.proficienciasAlternativas?.armaduras ?? [];
+    context.fdeAltShieldProfs = fde.proficienciasAlternativas?.escudos ?? [];
+    context.hasFdeAltWeaponProfs = context.fdeAltWeaponProfs.length > 0;
+    context.hasFdeAltArmorProfs = context.fdeAltArmorProfs.length > 0;
+    context.hasFdeAltShieldProfs = context.fdeAltShieldProfs.length > 0;
     return context;
   }
 
@@ -336,9 +417,426 @@ export class FDEActorSheet extends (DND5ECharacterSheet ?? FallbackActorSheet) {
     this._bindFDEActions();
   }
 
+  async _onSkillRoll(event) {
+    event.preventDefault();
+    const element = event.currentTarget;
+    const skillId = String(element.dataset.skillRoll ?? "").trim().toLowerCase();
+    if (!skillId) return;
+    if (!this.actor?.system?.skills?.[skillId]) return;
+
+    const total = getSkillTotal(this.actor, skillId);
+    const skillLabel = getSkillLabel(skillId);
+    const promptResult = await this._promptSkillRollOptions(skillLabel);
+    if (!promptResult) return;
+
+    const d20Term = promptResult.mode === "adv" ? "2d20kh" : (promptResult.mode === "dis" ? "2d20kl" : "1d20");
+    const situationalBonus = Number(promptResult.bonus ?? 0) || 0;
+    const roll = await (new Roll(`${d20Term} + @mod + @bonus`, { mod: total, bonus: situationalBonus })).evaluate({ async: true });
+    const modeText = promptResult.mode === "adv" ? "com Vantagem" : (promptResult.mode === "dis" ? "com Desvantagem" : "normal");
+    const finalMod = total + situationalBonus;
+    await roll.toMessage({
+      speaker: ChatMessage.getSpeaker({ actor: this.actor }),
+      flavor: `${skillLabel} (${modeText}) · Mod ${finalMod >= 0 ? `+${finalMod}` : finalMod}`
+    });
+  }
+
+  async _onItemAttackRoll(event) {
+    event.preventDefault();
+    const button = event.currentTarget;
+    const itemId = String(button?.dataset?.fdeItemAttack ?? "").trim();
+    if (!itemId) return;
+
+    const item = this.actor?.items?.get?.(itemId);
+    if (!item) {
+      ui.notifications?.warn("Item não encontrado para rolagem de ataque.");
+      return;
+    }
+
+    const actionType = String(item?.system?.actionType ?? "").toLowerCase();
+    const defaultAbility = actionType === "rwak" ? "dex" : "str";
+    const abilityId = String(item?.system?.ability ?? defaultAbility).toLowerCase();
+    const abilityMod = Number(this.actor?.system?.abilities?.[abilityId]?.mod ?? 0) || 0;
+
+    const flagData = this.actor?.getFlag?.("filhos-do-eden", "data") ?? {};
+    const profBonus = Number(flagData?.progressao?.bonusProficiencia ?? this.actor?.system?.attributes?.prof ?? 0) || 0;
+
+    // Item attack bonus may be numeric text. Non-numeric formulas are ignored here.
+    const itemAttackBonus = Number(String(item?.system?.attackBonus ?? "").replace(",", "."));
+    const safeItemAttackBonus = Number.isFinite(itemAttackBonus) ? itemAttackBonus : 0;
+
+    const formula = "1d20 + @ability + @prof + @item";
+    const roll = await (new Roll(formula, {
+      ability: abilityMod,
+      prof: profBonus,
+      item: safeItemAttackBonus
+    })).evaluate({ async: true });
+
+    const totalBonus = abilityMod + profBonus + safeItemAttackBonus;
+    const abilityLabel = String(this.actor?.system?.abilities?.[abilityId]?.label ?? abilityId.toUpperCase());
+
+    await roll.toMessage({
+      speaker: ChatMessage.getSpeaker({ actor: this.actor }),
+      flavor: `${item.name ?? "Ataque"} · Ataque (1d20) · ${abilityLabel} ${abilityMod >= 0 ? `+${abilityMod}` : abilityMod} + Prof ${profBonus >= 0 ? `+${profBonus}` : profBonus}${safeItemAttackBonus ? ` + Item ${safeItemAttackBonus >= 0 ? `+${safeItemAttackBonus}` : safeItemAttackBonus}` : ""} = ${totalBonus >= 0 ? `+${totalBonus}` : totalBonus}`
+    });
+
+    await this._postAttackDamagePrompt(item);
+  }
+
+  async _postAttackDamagePrompt(item) {
+    if (!item?.id || !this.actor?.id) return;
+
+    const content = `
+      <section class="fde-chat-card fde-item-attack-chat">
+        <h3>${escapeHTML(item.name ?? "Ataque")}</h3>
+        <p>Ataque rolado. Clique para escolher e rolar o dano.</p>
+        <button
+          type="button"
+          class="fde-btn-add"
+          data-fde-chat-item-damage="${escapeHTML(String(item.id))}"
+          data-fde-chat-actor-id="${escapeHTML(String(this.actor.id))}"
+        >Rolar Dano</button>
+      </section>
+    `;
+
+    await ChatMessage.create({
+      speaker: ChatMessage.getSpeaker({ actor: this.actor }),
+      content
+    });
+  }
+
+  _openItemSheet(itemId) {
+    const id = String(itemId ?? "").trim();
+    if (!id) return;
+
+    const item = this.actor?.items?.get?.(id);
+    if (!item) {
+      ui.notifications?.warn("Item não encontrado para edição.");
+      return;
+    }
+
+    item.sheet?.render?.(true);
+  }
+
+  async _confirmItemDelete(itemName) {
+    const DialogClass = globalThis.Dialog;
+    const label = String(itemName ?? "item");
+
+    if (!DialogClass) {
+      return globalThis.confirm?.(`Excluir o item \"${label}\"?`) ?? false;
+    }
+
+    return new Promise((resolve) => {
+      const dialog = new DialogClass({
+        title: "Excluir Item",
+        content: `<p>Deseja excluir o item <strong>${escapeHTML(label)}</strong>?</p>`,
+        buttons: {
+          cancel: {
+            icon: '<i class="fas fa-times"></i>',
+            label: "Cancelar",
+            callback: () => resolve(false)
+          },
+          confirm: {
+            icon: '<i class="fas fa-trash"></i>',
+            label: "Excluir",
+            callback: () => resolve(true)
+          }
+        },
+        default: "cancel",
+        close: () => resolve(false)
+      });
+      dialog.render(true);
+    });
+  }
+
+  async _onItemEditAction(event) {
+    event.preventDefault();
+    const button = event.currentTarget;
+    this._openItemSheet(button?.dataset?.fdeItemEdit);
+  }
+
+  async _onItemDeleteAction(event) {
+    event.preventDefault();
+    const button = event.currentTarget;
+    const itemId = String(button?.dataset?.fdeItemDelete ?? "").trim();
+    if (!itemId) return;
+
+    const item = this.actor?.items?.get?.(itemId);
+    if (!item) {
+      ui.notifications?.warn("Item não encontrado para exclusão.");
+      return;
+    }
+
+    const confirmed = await this._confirmItemDelete(item.name ?? "item");
+    if (!confirmed) return;
+
+    await this.actor.deleteEmbeddedDocuments("Item", [itemId]);
+    ui.notifications?.info(`Item removido: ${item.name ?? "Sem nome"}.`);
+    this.render(true);
+  }
+
+  async _autoActivateDroppedItem(item) {
+    if (!item) return { equipped: false, attuned: false };
+
+    const updateData = {};
+    let equipped = false;
+    let attuned = false;
+
+    if (typeof item?.system?.equipped === "boolean" && !item.system.equipped) {
+      updateData["system.equipped"] = true;
+      equipped = true;
+    }
+
+    const attunementValue = Number(item?.system?.attunement);
+    const requiredAttunement = Number(globalThis.CONFIG?.DND5E?.attunementTypes?.REQUIRED ?? 1);
+    const attunedValue = Number(globalThis.CONFIG?.DND5E?.attunementTypes?.ATTUNED ?? 2);
+    if (Number.isFinite(attunementValue) && attunementValue === requiredAttunement) {
+      updateData["system.attunement"] = attunedValue;
+      attuned = true;
+    }
+
+    if (Object.keys(updateData).length) {
+      await item.update(updateData);
+    }
+
+    return { equipped, attuned };
+  }
+
+  async _onItemUseRoll(event) {
+    event.preventDefault();
+    const button = event.currentTarget;
+    const itemId = String(button?.dataset?.fdeItemUse ?? "").trim();
+    if (!itemId) return;
+
+    const item = this.actor?.items?.get?.(itemId);
+    if (!item) {
+      ui.notifications?.warn("Item não encontrado para uso.");
+      return;
+    }
+
+    try {
+      if (typeof item.use === "function") {
+        await item.use({ event, configure: true });
+        return;
+      }
+    } catch (_error) {
+      try {
+        if (typeof item.use === "function") {
+          await item.use();
+          return;
+        }
+      } catch (_error2) {
+        // fallthrough
+      }
+    }
+
+    ui.notifications?.warn("Este item não possui ação de uso disponível.");
+  }
+
+  async _onItemDamageRoll(event) {
+    event.preventDefault();
+    const button = event.currentTarget;
+    const itemId = String(button?.dataset?.fdeItemDamage ?? "").trim();
+    if (!itemId) return;
+
+    const item = this.actor?.items?.get?.(itemId);
+    if (!item) {
+      ui.notifications?.warn("Item não encontrado para rolagem de dano.");
+      return;
+    }
+
+    const rollDamageFromChat = globalThis.fdeRollItemDamageFromChat;
+    if (typeof rollDamageFromChat === "function") {
+      await rollDamageFromChat(this.actor?.id, item.id, event);
+      return;
+    }
+
+    try {
+      if (typeof item.rollDamage === "function") {
+        await item.rollDamage({ event });
+        return;
+      }
+    } catch (_error) {
+      try {
+        if (typeof item.rollDamage === "function") {
+          await item.rollDamage();
+          return;
+        }
+      } catch (_error2) {
+        // fallthrough
+      }
+    }
+
+    ui.notifications?.warn("Este item não possui rolagem de dano disponível.");
+  }
+
+  async _onCompendiumItemDrop(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (typeof event.stopImmediatePropagation === "function") {
+      event.stopImmediatePropagation();
+    }
+
+    if (event.__fdeDropHandled === true) return;
+    event.__fdeDropHandled = true;
+
+    const dropData = globalThis.TextEditor?.getDragEventData?.(event);
+    if (!dropData) return;
+
+    try {
+      const ItemClass = globalThis.CONFIG?.Item?.documentClass ?? globalThis.Item;
+      if (!ItemClass?.fromDropData) {
+        ui.notifications?.warn("Não foi possível ler o item arrastado neste ambiente.");
+        return;
+      }
+
+      const dropped = await ItemClass.fromDropData(dropData);
+      if (!dropped) {
+        ui.notifications?.warn("Arraste um item válido de compêndio ou diretório.");
+        return;
+      }
+
+      const itemData = typeof dropped.toObject === "function" ? dropped.toObject() : foundry.utils.deepClone(dropped);
+      if (!itemData || typeof itemData !== "object") {
+        ui.notifications?.warn("Não foi possível converter o item arrastado.");
+        return;
+      }
+
+      const created = await this.actor.createEmbeddedDocuments("Item", [itemData]);
+      let equippedAny = false;
+      let attunedAny = false;
+
+      for (const item of created ?? []) {
+        const result = await this._autoActivateDroppedItem(item);
+        equippedAny ||= Boolean(result?.equipped);
+        attunedAny ||= Boolean(result?.attuned);
+      }
+
+      const suffix = equippedAny || attunedAny
+        ? ` (${[
+          equippedAny ? "equipado" : null,
+          attunedAny ? "sintonizado" : null
+        ].filter(Boolean).join(" e ")})`
+        : "";
+      ui.notifications?.info(`Item adicionado: ${itemData.name ?? "Sem nome"}${suffix}.`);
+      this.render(true);
+    } catch (error) {
+      console.error("Filhos do Eden | Falha ao adicionar item por drop.", error);
+      ui.notifications?.error("Não foi possível adicionar o item arrastado.");
+    }
+  }
+
+  _bindCompendiumDropzones(root) {
+    root.querySelectorAll("[data-fde-item-dropzone]").forEach((zone) => {
+      if (zone.dataset.fdeItemDropBound === "1") return;
+      zone.dataset.fdeItemDropBound = "1";
+
+      zone.addEventListener("dragover", (event) => {
+        event.preventDefault();
+        zone.classList.add("is-dragover");
+      });
+
+      zone.addEventListener("dragleave", () => {
+        zone.classList.remove("is-dragover");
+      });
+
+      zone.addEventListener("drop", async (event) => {
+        zone.classList.remove("is-dragover");
+        await this._onCompendiumItemDrop(event);
+      });
+    });
+  }
+
+  async _promptSkillRollOptions(skillLabel) {
+    const DialogClass = globalThis.Dialog;
+    if (!DialogClass) return { mode: "normal", bonus: 0 };
+
+    return new Promise((resolve) => {
+      const dialog = new DialogClass({
+        title: `Rolar ${skillLabel}`,
+        content: `
+          <form class="fde-roll-options">
+            <div class="form-group">
+              <label>Tipo de rolagem</label>
+              <select name="rollMode">
+                <option value="normal" selected>Normal</option>
+                <option value="adv">Vantagem</option>
+                <option value="dis">Desvantagem</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Bônus situacional</label>
+              <input type="number" name="bonus" value="0" step="1" />
+            </div>
+          </form>
+        `,
+        buttons: {
+          cancel: {
+            icon: '<i class="fas fa-times"></i>',
+            label: "Cancelar",
+            callback: () => resolve(null)
+          },
+          roll: {
+            icon: '<i class="fas fa-dice-d20"></i>',
+            label: "Rolar",
+            callback: (html) => {
+              const root = html?.[0] ?? html;
+              const modeRaw = String(root?.querySelector?.('[name="rollMode"]')?.value ?? "normal");
+              const bonusRaw = Number(root?.querySelector?.('[name="bonus"]')?.value ?? 0);
+              const mode = modeRaw === "adv" || modeRaw === "dis" ? modeRaw : "normal";
+              const bonus = Number.isFinite(bonusRaw) ? Math.trunc(bonusRaw) : 0;
+              resolve({ mode, bonus });
+            }
+          }
+        },
+        default: "roll",
+        close: () => resolve(null)
+      });
+
+      dialog.render(true);
+    });
+  }
+
   _bindFDEActions() {
     const root = this._getSheetElement();
     if (!root) return;
+
+    root.querySelectorAll("[data-skill-roll]").forEach((element) => {
+      if (element.dataset.fdeSkillRollBound === "1") return;
+      element.dataset.fdeSkillRollBound = "1";
+      element.addEventListener("click", this._onSkillRoll.bind(this));
+    });
+
+    root.querySelectorAll("[data-fde-item-attack]").forEach((button) => {
+      if (button.dataset.fdeItemAttackBound === "1") return;
+      button.dataset.fdeItemAttackBound = "1";
+      button.addEventListener("click", this._onItemAttackRoll.bind(this));
+    });
+
+    root.querySelectorAll("[data-fde-item-use]").forEach((button) => {
+      if (button.dataset.fdeItemUseBound === "1") return;
+      button.dataset.fdeItemUseBound = "1";
+      button.addEventListener("click", this._onItemUseRoll.bind(this));
+    });
+
+    root.querySelectorAll("[data-fde-item-edit]").forEach((button) => {
+      if (button.dataset.fdeItemEditBound === "1") return;
+      button.dataset.fdeItemEditBound = "1";
+      button.addEventListener("click", this._onItemEditAction.bind(this));
+    });
+
+    root.querySelectorAll("[data-fde-item-delete]").forEach((button) => {
+      if (button.dataset.fdeItemDeleteBound === "1") return;
+      button.dataset.fdeItemDeleteBound = "1";
+      button.addEventListener("click", this._onItemDeleteAction.bind(this));
+    });
+
+    root.querySelectorAll("[data-fde-item-damage]").forEach((button) => {
+      if (button.dataset.fdeItemDamageBound === "1") return;
+      button.dataset.fdeItemDamageBound = "1";
+      button.addEventListener("click", this._onItemDamageRoll.bind(this));
+    });
+
+    this._bindCompendiumDropzones(root);
 
     root.querySelectorAll("[data-fde-action], [data-action]").forEach((button) => {
       const actionName = button.dataset.fdeAction ?? button.dataset.action;
@@ -354,6 +852,18 @@ export class FDEActorSheet extends (DND5ECharacterSheet ?? FallbackActorSheet) {
       if (input.dataset.fdeSystemBound === "1") return;
       input.dataset.fdeSystemBound = "1";
       input.addEventListener("change", this._onSystemFieldChange.bind(this));
+    });
+
+    root.querySelectorAll('select[name="fde.casta"]').forEach((select) => {
+      if (select.dataset.fdeCastaBound === "1") return;
+      select.dataset.fdeCastaBound = "1";
+      select.addEventListener("change", this._onCastaFieldChange.bind(this));
+    });
+
+    root.querySelectorAll('input[name="fde.ciclo"]').forEach((input) => {
+      if (input.dataset.fdeCicloBound === "1") return;
+      input.dataset.fdeCicloBound = "1";
+      input.addEventListener("change", this._onCycleFieldChange.bind(this));
     });
 
     root.querySelectorAll("[data-fde-subtab]").forEach((button) => {
@@ -425,6 +935,7 @@ export class FDEActorSheet extends (DND5ECharacterSheet ?? FallbackActorSheet) {
     nav.innerHTML = `
       <button type="button" class="fde-inner-tab active" data-fde-subtab="geral">Geral</button>
       <button type="button" class="fde-inner-tab" data-fde-subtab="casta">Casta</button>
+      <button type="button" class="fde-inner-tab" data-fde-subtab="itens">Itens</button>
       <button type="button" class="fde-inner-tab" data-fde-subtab="tecnicas">Técnicas</button>
     `;
 
@@ -437,6 +948,11 @@ export class FDEActorSheet extends (DND5ECharacterSheet ?? FallbackActorSheet) {
     panelCasta.dataset.fdePanel = "casta";
     panelCasta.hidden = true;
 
+    const panelItens = document.createElement("section");
+    panelItens.className = "fde-inner-panel";
+    panelItens.dataset.fdePanel = "itens";
+    panelItens.hidden = true;
+
     const panelTecnicas = document.createElement("section");
     panelTecnicas.className = "fde-inner-panel";
     panelTecnicas.dataset.fdePanel = "tecnicas";
@@ -446,6 +962,8 @@ export class FDEActorSheet extends (DND5ECharacterSheet ?? FallbackActorSheet) {
       const title = String(block.querySelector(".fde-section-header h4")?.textContent ?? "").toLowerCase();
       if (title.includes("técnicas") || title.includes("tecnicas")) {
         panelTecnicas.appendChild(block);
+      } else if (title.includes("item") || title.includes("itens") || title.includes("ataque") || title.includes("inventário") || title.includes("inventario")) {
+        panelItens.appendChild(block);
       } else if (title.includes("casta") || title.includes("recursos") || title.includes("outras perícias") || title.includes("outras pericias")) {
         panelCasta.appendChild(block);
       } else {
@@ -454,6 +972,7 @@ export class FDEActorSheet extends (DND5ECharacterSheet ?? FallbackActorSheet) {
     }
 
     scroll.prepend(panelTecnicas);
+    scroll.prepend(panelItens);
     scroll.prepend(panelCasta);
     scroll.prepend(panelGeral);
     scroll.prepend(nav);
@@ -493,6 +1012,215 @@ export class FDEActorSheet extends (DND5ECharacterSheet ?? FallbackActorSheet) {
     const updateData = {};
     foundry.utils.setProperty(updateData, path, value);
     await this.actor.update(updateData);
+
+    const saveMatch = /^system\.abilities\.([a-z]+)\.proficient$/i.exec(path);
+    if (saveMatch) {
+      const abilityKey = String(saveMatch[1] ?? "").toLowerCase();
+      const current = normalizeFDEData(this.actor.getFlag("filhos-do-eden", "data") ?? {});
+      const managedExtras = new Set(current.salvaguardas?.extras ?? []);
+      if (!managedExtras.has(abilityKey)) {
+        current.salvaguardas = current.salvaguardas ?? { base: {}, extras: [] };
+        current.salvaguardas.base = current.salvaguardas.base ?? {};
+        current.salvaguardas.base[abilityKey] = value;
+        await this.actor.setFlag("filhos-do-eden", "data", current);
+      }
+    }
+
+    const skillMatch = /^system\.skills\.([a-z]+)\.value$/i.exec(path);
+    if (skillMatch) {
+      const skillKey = normalizeSkillId(String(skillMatch[1] ?? "").toLowerCase());
+      const fdeData = normalizeFDEData(this.actor.getFlag("filhos-do-eden", "data") ?? {});
+      const isFDEManaged = Boolean(String(fdeData?.casta ?? "").trim());
+      if (isFDEManaged && skillKey) {
+        // Persist manual override so 0/1/2 chosen in UI is respected after recalculation.
+        const fontes = fdeData.pericias.fontes ?? {};
+        fontes[skillKey] = (fontes[skillKey] ?? []).filter((e) => e?.source !== "manual" && e?.source !== "manual-override");
+        // Remove existing manual expertise for this skill
+        fdeData.pericias.especializacoes = (fdeData.pericias.especializacoes ?? [])
+          .filter((e) => !(e?.type === "skill" && normalizeSkillId(e?.target) === skillKey && e?.source === "manual"));
+
+        fontes[skillKey] = [
+          ...(fontes[skillKey] ?? []),
+          { source: "manual-override", value: Math.max(0, Math.min(2, Math.trunc(Number(value) || 0))) }
+        ];
+
+        if (value >= 1) {
+          fontes[skillKey] = [...(fontes[skillKey] ?? []), { source: "manual" }];
+        }
+        if (value >= 2) {
+          fdeData.pericias.especializacoes = [
+            ...(fdeData.pericias.especializacoes ?? []),
+            { type: "skill", target: skillKey, source: "manual" }
+          ];
+        }
+        fdeData.pericias.fontes = fontes;
+        await this.actor.setFlag("filhos-do-eden", "data", fdeData);
+        await recalculateAllSkillData(this.actor);
+        return;
+      }
+    }
+  }
+
+  async _confirmCastaChange() {
+    const DialogClass = globalThis.Dialog;
+
+    return new Promise((resolve) => {
+      if (!DialogClass) {
+        resolve(globalThis.confirm?.("Trocar de casta irá resetar toda a progressão desta ficha. Deseja continuar?") ?? false);
+        return;
+      }
+
+      const dialog = new DialogClass({
+        title: "Trocar de Casta",
+        content: `<p>Trocar de casta irá <strong>resetar toda a progressão</strong> desta ficha (ciclos, perícias, ferramentas e benefícios).</p><p>Deseja continuar?</p>`,
+        buttons: {
+          cancel: {
+            icon: '<i class="fas fa-times"></i>',
+            label: "Cancelar",
+            callback: () => resolve(false)
+          },
+          confirm: {
+            icon: '<i class="fas fa-check"></i>',
+            label: "Confirmar",
+            callback: () => resolve(true)
+          }
+        },
+        default: "cancel",
+        close: () => resolve(false)
+      });
+
+      dialog.render(true);
+    });
+  }
+
+  async _onCastaFieldChange(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
+
+    if (this._fdeHandlingCastaChange) return;
+
+    const select = event.currentTarget;
+    const previous = normalizeFDEData(this.actor.getFlag("filhos-do-eden", "data") ?? {});
+    const prevCasta = String(previous.casta ?? "").trim();
+    const nextCasta = String(select?.value ?? "").trim();
+
+    if (nextCasta === prevCasta) return;
+
+    let nextData = await this._getCurrentFDEData();
+    nextData.casta = nextCasta;
+
+    if (prevCasta && nextCasta) {
+      const confirmed = await this._confirmCastaChange();
+      if (!confirmed) {
+        select.value = prevCasta;
+        this.render(false);
+        return;
+      }
+
+      nextData = resetFDEDataForCastaChange(nextData, nextCasta);
+      nextData.pericias = {
+        ...(nextData.pericias ?? {}),
+        pacoteInicialCasta: String(nextCasta ?? "").trim(),
+        fontes: {},
+        escolhasLivres: [],
+        especializacoes: [],
+        ganhosPorCiclo: [],
+        pendencias: []
+      };
+      nextData.ferramentas = {
+        ...(nextData.ferramentas ?? {}),
+        treinadas: [],
+        especializacoes: [],
+        atributos: {}
+      };
+      nextData.proficienciasAlternativas = {
+        armas: [],
+        armaduras: [],
+        escudos: []
+      };
+      await resetManagedProficiencyState(this.actor);
+    }
+
+    const shouldForceHardReset = Boolean(prevCasta && nextCasta);
+
+    this._fdeHandlingCastaChange = true;
+    try {
+      await this._setFDEData(nextData, shouldForceHardReset
+        ? { skipInitialPackage: true, forceZeroProficiencies: true }
+        : { skipInitialPackage: false, forceZeroProficiencies: false });
+    } finally {
+      this._fdeHandlingCastaChange = false;
+    }
+  }
+
+  async _confirmSheetReset() {
+    const DialogClass = globalThis.Dialog;
+
+    return new Promise((resolve) => {
+      if (!DialogClass) {
+        resolve(globalThis.confirm?.("Resetar a ficha vai limpar casta e zerar perícias/proficiências. Deseja continuar?") ?? false);
+        return;
+      }
+
+      const dialog = new DialogClass({
+        title: "Resetar Ficha",
+        content: "<p>Esta ação vai resetar a ficha FDE: limpar a casta e zerar todas as perícias/proficiências gerenciadas pelo módulo.</p><p>Deseja continuar?</p>",
+        buttons: {
+          cancel: {
+            icon: '<i class="fas fa-times"></i>',
+            label: "Cancelar",
+            callback: () => resolve(false)
+          },
+          confirm: {
+            icon: '<i class="fas fa-undo"></i>',
+            label: "Resetar",
+            callback: () => resolve(true)
+          }
+        },
+        default: "cancel",
+        close: () => resolve(false)
+      });
+
+      dialog.render(true);
+    });
+  }
+
+  async _resetSheetData() {
+    const confirmed = await this._confirmSheetReset();
+    if (!confirmed) return;
+
+    const resetData = createDefaultFDEData();
+    await setFDEData(this.actor, resetData);
+    await resetManagedProficiencyState(this.actor);
+    ui.notifications?.info("Ficha resetada. Escolha a casta novamente para recalcular progressão.");
+    this.render(true);
+  }
+
+  async _onCycleFieldChange(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
+
+    if (this._fdeHandlingCycleChange) return;
+
+    const input = event.currentTarget;
+    const previous = normalizeFDEData(this.actor.getFlag("filhos-do-eden", "data") ?? {});
+    const prevCycle = Math.max(1, Number(previous.ciclo ?? 1));
+    const nextCycle = Math.max(1, Math.min(6, Number(input?.value ?? prevCycle) || prevCycle));
+
+    input.value = String(nextCycle);
+    if (nextCycle === prevCycle) return;
+
+    const nextData = await this._getCurrentFDEData();
+    nextData.ciclo = nextCycle;
+
+    this._fdeHandlingCycleChange = true;
+    try {
+      await this._setFDEData(nextData);
+    } finally {
+      this._fdeHandlingCycleChange = false;
+    }
   }
 
   _injectFDETab() {
@@ -641,18 +1369,16 @@ export class FDEActorSheet extends (DND5ECharacterSheet ?? FallbackActorSheet) {
       .filter((key) => key in skills)
       .map((key) => {
         const skill = skills[key] ?? {};
-        const proficiencyRaw = this._toNumber(skill.value, 0);
-        const proficiency = Math.round(proficiencyRaw * 2) / 2;
+        const proficiency = getSkillProficiencyLevel(this.actor, key);
         const abilityKey = String(skill.ability ?? "").toLowerCase();
         const abilityData = abilities[abilityKey] ?? {};
         const abilityMod = this._toNumber(abilityData.mod, 0);
         const profPart = Math.floor(proficiencyBonus * proficiency);
         const bonusCheck = String(skill?.bonuses?.check ?? "");
         const bonusNumeric = this._toNumber((bonusCheck || "").replace(",", "."), 0);
-        const computedTotal = abilityMod + profPart + bonusNumeric;
-        const total = this._toNumber(skill.total, computedTotal);
+        const total = getSkillTotal(this.actor, key);
         const label = this._resolveLabel(labels[key], key.toUpperCase());
-        const passive = this._toNumber(skill.passive, 10 + total);
+        const passive = 10 + total;
         const abilityLabel = this._resolveLabel(abilityLabels[abilityKey], abilityKey.toUpperCase() || "-");
 
         return {
@@ -683,11 +1409,56 @@ export class FDEActorSheet extends (DND5ECharacterSheet ?? FallbackActorSheet) {
     const xpProgress = fde.ciclo < 6 ? Math.min(100, (fde.experiencia / nextCycleXP) * 100) : 100;
     const techniqueSlots = fde.progressao?.slotsTecnicas ?? cycleData?.techniqueSlots ?? {};
     const techniqueSlotsLine = Object.values(techniqueSlots).join(" / ");
+    const castaLocked = Boolean(String(fde.casta ?? "").trim());
+    const actorItems = Array.from(this.actor?.items ?? [])
+      .filter((item) => {
+        const itemType = String(item?.type ?? "").trim().toLowerCase();
+        return ["weapon", "spell", "feat", "equipment", "consumable", "tool", "loot", "backpack"].includes(itemType);
+      })
+      .sort((a, b) => String(a?.name ?? "").localeCompare(String(b?.name ?? ""), "pt-BR"))
+      .map((item) => {
+        const itemType = String(item?.type ?? "").trim();
+        const sourceId = String(item?.flags?.core?.sourceId ?? "").trim();
+        const sourceLabel = sourceId.includes("Compendium") ? sourceId.replace(/^Compendium\./i, "") : "";
+        const canUse = typeof item?.use === "function";
+        const canAttack = typeof item?.rollAttack === "function" || typeof item?.use === "function";
+        const canDamage = typeof item?.rollDamage === "function";
+        return {
+          id: String(item.id ?? ""),
+          name: String(item.name ?? "(Sem nome)").trim() || "(Sem nome)",
+          type: itemType,
+          sourceLabel,
+          canUse,
+          canAttack,
+          canDamage
+        };
+      });
 
-    const castaOptions = getCastaOptions().map((casta) => {
-      const selected = casta.value === fde.casta ? " selected" : "";
-      return `<option value="${escapeHTML(casta.value)}"${selected}>${escapeHTML(casta.label)}</option>`;
-    }).join("");
+    const itemAttacksHTML = actorItems.length
+      ? actorItems.map((entry) => `
+          <div class="fde-list-item fde-item-roll-row">
+            <div class="fde-list-main">
+              <strong>${escapeHTML(entry.name)}</strong>
+              <div class="fde-meta">${escapeHTML(entry.type)}${entry.sourceLabel ? ` · ${escapeHTML(entry.sourceLabel)}` : ""}</div>
+            </div>
+            <div class="fde-inline-actions">
+              <button type="button" class="fde-btn-add" data-fde-item-use="${escapeHTML(entry.id)}"${entry.canUse ? "" : " disabled"}>Usar</button>
+              <button type="button" class="fde-btn-add" data-fde-item-attack="${escapeHTML(entry.id)}"${entry.canAttack ? "" : " disabled"}>Atq</button>
+              <button type="button" class="fde-btn-add" data-fde-item-damage="${escapeHTML(entry.id)}"${entry.canDamage ? "" : " disabled"}>Dano</button>
+              <button type="button" class="fde-btn-add" data-fde-item-edit="${escapeHTML(entry.id)}">Editar</button>
+              <button type="button" class="fde-btn-remove" data-fde-item-delete="${escapeHTML(entry.id)}" title="Excluir">X</button>
+            </div>
+          </div>
+        `).join("")
+      : '<p class="fde-empty-hint">Nenhum item no ator. Arraste de um compêndio D&D para a área acima.</p>';
+
+    const castaOptions = [
+      `<option value=""${!fde.casta ? " selected" : ""}>Escolher...</option>`,
+      ...getCastaOptions().map((casta) => {
+        const selected = casta.value === fde.casta ? " selected" : "";
+        return `<option value="${escapeHTML(casta.value)}"${selected}>${escapeHTML(casta.label)}</option>`;
+      })
+    ].join("");
 
     const abilitiesHTML = abilityRows.map((row) => `
       <div class="fde-stat-card" data-ability="${row.key}">
@@ -716,7 +1487,7 @@ export class FDEActorSheet extends (DND5ECharacterSheet ?? FallbackActorSheet) {
     const skillsHTML = skillRows.map((row) => `
       <div class="fde-skill-row" data-skill="${row.key}">
         <div class="fde-skill-mainline">
-          <span class="fde-skill-name" title="${escapeHTML(row.label)}">${escapeHTML(row.label)}</span>
+          <span class="fde-skill-name" data-skill-roll="${row.key}" title="${escapeHTML(row.label)}" style="cursor: pointer;">${escapeHTML(row.label)}</span>
           <span class="fde-skill-total">${row.totalLabel}</span>
           <span class="fde-skill-passive">Passiva ${row.passive}</span>
         </div>
@@ -728,12 +1499,20 @@ export class FDEActorSheet extends (DND5ECharacterSheet ?? FallbackActorSheet) {
         <div class="fde-skill-editline">
           <label class="fde-inline-field">
             <span>Prof.</span>
-            <select data-fde-system-path="system.skills.${row.key}.value" data-fde-mode="half-step">
-              <option value="0"${row.proficiency === 0 ? " selected" : ""}>0</option>
-              <option value="0.5"${row.proficiency === 0.5 ? " selected" : ""}>1/2</option>
-              <option value="1"${row.proficiency === 1 ? " selected" : ""}>1</option>
-              <option value="2"${row.proficiency === 2 ? " selected" : ""}>2</option>
-            </select>
+            <span class="fde-radio-group" role="radiogroup" aria-label="Proficiência de ${escapeHTML(row.label)}">
+              <label class="fde-radio-pill">
+                <input type="radio" name="fde-skill-prof-${row.key}" value="0" data-fde-system-path="system.skills.${row.key}.value" data-fde-mode="ability-prof"${row.proficiency < 1 ? " checked" : ""} />
+                <span>0</span>
+              </label>
+              <label class="fde-radio-pill">
+                <input type="radio" name="fde-skill-prof-${row.key}" value="1" data-fde-system-path="system.skills.${row.key}.value" data-fde-mode="ability-prof"${row.proficiency >= 1 && row.proficiency < 2 ? " checked" : ""} />
+                <span>1</span>
+              </label>
+              <label class="fde-radio-pill">
+                <input type="radio" name="fde-skill-prof-${row.key}" value="2" data-fde-system-path="system.skills.${row.key}.value" data-fde-mode="ability-prof"${row.proficiency >= 2 ? " checked" : ""} />
+                <span>2</span>
+              </label>
+            </span>
           </label>
         </div>
       </div>
@@ -1022,7 +1801,8 @@ export class FDEActorSheet extends (DND5ECharacterSheet ?? FallbackActorSheet) {
             </div>
             <div class="fde-field">
               <label>Casta</label>
-              <select name="fde.casta">${castaOptions}</select>
+              <select name="fde.casta"${castaLocked ? " disabled" : ""}>${castaOptions}</select>
+              ${castaLocked ? '<p class="fde-lock-hint">Casta travada. Use "Resetar Ficha" para escolher outra.</p>' : ""}
             </div>
             <div class="fde-field">
               <label>Ciclo</label>
@@ -1066,9 +1846,12 @@ export class FDEActorSheet extends (DND5ECharacterSheet ?? FallbackActorSheet) {
               <div class="fde-xp-info">
                 <span>Slots de Técnicas (N1→N6): ${escapeHTML(techniqueSlotsLine)}</span>
               </div>
-              ${fde.ciclo < 6
-                ? `<button type="button" class="fde-btn-advance" data-fde-action="advance-cycle" title="Avançar para o próximo ciclo">Subir de Ciclo</button>`
-                : '<span class="fde-cycle-max">Ciclo Máximo</span>'}
+              <div class="fde-cycle-actions">
+                <button type="button" class="fde-btn-reset" data-fde-action="reset-sheet" title="Resetar ficha">Resetar Ficha</button>
+                ${fde.ciclo < 6
+                  ? `<button type="button" class="fde-btn-advance" data-fde-action="advance-cycle" title="Avançar para o próximo ciclo">Subir de Ciclo</button>`
+                  : '<span class="fde-cycle-max">Ciclo Máximo</span>'}
+              </div>
             </div>
           </div>
         </div>
@@ -1116,6 +1899,20 @@ export class FDEActorSheet extends (DND5ECharacterSheet ?? FallbackActorSheet) {
             </button>
           </div>
           <div class="fde-item-list">${outrasPericias}</div>
+        </div>
+
+        <!-- Itens e Ataques -->
+        <div class="fde-block">
+          <div class="fde-section-header">
+            <h4><i class="fas fa-crosshairs"></i> Itens e Ataques</h4>
+          </div>
+          <div class="fde-compendium-dropzone" data-fde-item-dropzone="1">
+            Arraste aqui itens de Compêndios do D&D para adicionar ao personagem
+          </div>
+          <div class="fde-sub-header">
+            <h5>Rolagens de Ataque</h5>
+          </div>
+          <div class="fde-item-list">${itemAttacksHTML}</div>
         </div>
 
         <!-- Técnicas -->
@@ -1191,6 +1988,12 @@ export class FDEActorSheet extends (DND5ECharacterSheet ?? FallbackActorSheet) {
         if (host) host.innerHTML = "";
         return undefined;
       }
+      case "resolve-proficiency-choice":
+        return this._openPendingProficiencyChoiceDialog(String(event.currentTarget.dataset.pendingId ?? ""));
+      case "resolve-expertise-choice":
+        return this._openPendingExpertiseChoiceDialog(String(event.currentTarget.dataset.pendingId ?? ""));
+      case "reset-sheet":
+        return this._resetSheetData();
       case "add-tecnica":
         return this._addTecnica();
       case "remove-tecnica":
@@ -1203,10 +2006,193 @@ export class FDEActorSheet extends (DND5ECharacterSheet ?? FallbackActorSheet) {
 
   }
 
+  _getPendingChoiceById(pendingId) {
+    const fde = normalizeFDEData(this.actor.getFlag("filhos-do-eden", "data") ?? {});
+    return (fde.pericias?.pendencias ?? []).find((entry) => entry?.id === pendingId && !entry?.resolved) ?? null;
+  }
+
+  _getWeaponChoiceOptions() {
+    const fromInventory = (this.actor?.items ?? [])
+      .filter((item) => item.type === "weapon")
+      .map((item) => ({ value: item.name, label: item.name }));
+
+    const defaults = [
+      { value: "simple", label: "Armas Simples" },
+      { value: "martial", label: "Armas Marciais" },
+      { value: "firearms", label: "Armas de Fogo" }
+    ];
+
+    const merged = [...defaults, ...fromInventory];
+    const seen = new Set();
+    return merged.filter((entry) => {
+      const key = String(entry.value).toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }
+
+  _buildPendingChoiceOptionsHTML(pending) {
+    const allowed = pending?.allowed ?? [];
+    const options = [];
+
+    if (allowed.includes("skill")) {
+      for (const entry of getAvailableSkillChoices(this.actor).filter((option) => !option.disabled)) {
+        options.push(`<option value="skill:${escapeHTML(entry.id)}">Perícia · ${escapeHTML(entry.label)}</option>`);
+      }
+    }
+
+    if (allowed.includes("tool")) {
+      for (const entry of getAvailableToolChoices(this.actor).filter((option) => !option.disabled)) {
+        options.push(`<option value="tool:${escapeHTML(entry.id)}">Ferramenta · ${escapeHTML(entry.label)}</option>`);
+      }
+    }
+
+    if (allowed.includes("weapon")) {
+      for (const entry of this._getWeaponChoiceOptions()) {
+        options.push(`<option value="weapon:${escapeHTML(entry.value)}">Arma · ${escapeHTML(entry.label)}</option>`);
+      }
+    }
+
+    if (allowed.includes("armor")) {
+      for (const entry of [
+        { value: "light", label: "Armadura Leve" },
+        { value: "medium", label: "Armadura Média" },
+        { value: "heavy", label: "Armadura Pesada" }
+      ]) {
+        options.push(`<option value="armor:${entry.value}">${escapeHTML(entry.label)}</option>`);
+      }
+    }
+
+    if (allowed.includes("shield")) {
+      options.push('<option value="shield:shield">Escudo</option>');
+    }
+
+    return options.join("");
+  }
+
+  _buildPendingExpertiseOptionsHTML() {
+    const options = [];
+
+    for (const entry of getAvailableExpertiseSkillChoices(this.actor).filter((option) => !option.disabled)) {
+      options.push(`<option value="expertise-skill:${escapeHTML(entry.id)}">Perícia · ${escapeHTML(entry.label)}</option>`);
+    }
+
+    for (const entry of getAvailableExpertiseToolChoices(this.actor).filter((option) => !option.disabled)) {
+      options.push(`<option value="expertise-tool:${escapeHTML(entry.id)}">Ferramenta · ${escapeHTML(entry.label)}</option>`);
+    }
+
+    return options.join("");
+  }
+
+  async _openPendingProficiencyChoiceDialog(pendingId) {
+    const pending = this._getPendingChoiceById(pendingId);
+    if (!pending) {
+      ui.notifications?.warn("A escolha pendente não foi encontrada.");
+      return;
+    }
+
+    const optionsHTML = this._buildPendingChoiceOptionsHTML(pending);
+    if (!optionsHTML) {
+      ui.notifications?.warn("Não há opções válidas disponíveis para esta escolha.");
+      return;
+    }
+
+    const DialogClass = globalThis.Dialog;
+    if (!DialogClass) return;
+
+    const content = `
+      <form>
+        <div class="form-group">
+          <label>${escapeHTML(pending.label ?? "Escolha pendente")}</label>
+          <select name="resolution">${optionsHTML}</select>
+        </div>
+      </form>
+    `;
+
+    const resolveChoice = async (html) => {
+      const value = html.find?.('[name="resolution"]')?.val?.() ?? html[0]?.querySelector?.('[name="resolution"]')?.value ?? "";
+      const [type, target] = String(value).split(":");
+      const result = await applySkillOrToolChoice(this.actor, { pendingId, type, target, cycle: pending.cycle });
+      if (!result?.ok) {
+        ui.notifications?.warn(result?.reason ?? "Não foi possível aplicar a escolha.");
+        return;
+      }
+      ui.notifications?.info("Escolha aplicada com sucesso.");
+      this.render(true);
+    };
+
+    new DialogClass({
+      title: "Resolver Escolha de Progressão",
+      content,
+      buttons: {
+        cancel: { label: "Cancelar" },
+        confirm: {
+          label: "Aplicar",
+          callback: resolveChoice
+        }
+      },
+      default: "confirm"
+    }).render(true);
+  }
+
+  async _openPendingExpertiseChoiceDialog(pendingId) {
+    const pending = this._getPendingChoiceById(pendingId);
+    if (!pending) {
+      ui.notifications?.warn("A escolha de especialização não foi encontrada.");
+      return;
+    }
+
+    const optionsHTML = this._buildPendingExpertiseOptionsHTML();
+    if (!optionsHTML) {
+      ui.notifications?.warn("Não há perícias ou ferramentas disponíveis para especialização.");
+      return;
+    }
+
+    const DialogClass = globalThis.Dialog;
+    if (!DialogClass) return;
+
+    const content = `
+      <form>
+        <div class="form-group">
+          <label>${escapeHTML(pending.label ?? "Escolha de especialização")}</label>
+          <select name="resolution">${optionsHTML}</select>
+        </div>
+      </form>
+    `;
+
+    const resolveChoice = async (html) => {
+      const value = html.find?.('[name="resolution"]')?.val?.() ?? html[0]?.querySelector?.('[name="resolution"]')?.value ?? "";
+      const [type, target] = String(value).split(":");
+      const result = await applySkillOrToolChoice(this.actor, { pendingId, type, target, cycle: pending.cycle });
+      if (!result?.ok) {
+        ui.notifications?.warn(result?.reason ?? "Não foi possível aplicar a especialização.");
+        return;
+      }
+      ui.notifications?.info("Especialização aplicada com sucesso.");
+      this.render(true);
+    };
+
+    new DialogClass({
+      title: "Resolver Especialização",
+      content,
+      buttons: {
+        cancel: { label: "Cancelar" },
+        confirm: {
+          label: "Aplicar",
+          callback: resolveChoice
+        }
+      },
+      default: "confirm"
+    }).render(true);
+  }
+
   _syncCastaPendingChoices(data) {
     const castaId = getCasta(data?.casta)?.id ?? "";
     const safe = normalizeFDEData(data ?? {});
-    const chosenExpertise = safe.recursosCasta?.especializacoes?.filter((entry) => String(entry ?? "").trim().length > 0).length ?? 0;
+    const legacyExpertise = safe.recursosCasta?.especializacoes?.filter((entry) => String(entry ?? "").trim().length > 0).length ?? 0;
+    const structuredExpertise = (safe.pericias?.especializacoes?.length ?? 0) + (safe.ferramentas?.especializacoes?.length ?? 0);
+    const chosenExpertise = legacyExpertise + structuredExpertise;
     const totalExpertise = Number(safe.progressao?.escolhasEspecializacao ?? 0);
     const normalizedProvince = String(safe.recursosCasta?.provincia ?? "").trim().toLowerCase();
 
@@ -1664,12 +2650,51 @@ export class FDEActorSheet extends (DND5ECharacterSheet ?? FallbackActorSheet) {
     return normalizeFDEData({ ...base, ...(expanded.fde ?? {}) });
   }
 
-  async _setFDEData(data) {
+  async _setFDEData(data, options = {}) {
+    const previous = normalizeFDEData(this.actor.getFlag("filhos-do-eden", "data") ?? {});
     const synced = this._syncCastaPendingChoices(data);
     const normalized = normalizeFDEData(synced);
     await this.actor.setFlag("filhos-do-eden", "data", normalized);
+
+    if (options?.forceZeroProficiencies) {
+      const hardZero = this._buildHardZeroProficiencyData(normalized);
+      await this.actor.setFlag("filhos-do-eden", "data", hardZero);
+      await resetManagedProficiencyState(this.actor);
+      this.render(true);
+      return;
+    }
+
     await this._applyCastaResourceAutomation(normalized);
+    await synchronizeActorSkillState(this.actor, previous, normalized, options);
+
     this.render(true);
+  }
+
+  _buildHardZeroProficiencyData(data) {
+    const safe = normalizeFDEData(data ?? {});
+    return normalizeFDEData({
+      ...safe,
+      pericias: {
+        ...(safe.pericias ?? {}),
+        pacoteInicialCasta: String(safe.casta ?? "").trim(),
+        fontes: {},
+        escolhasLivres: [],
+        especializacoes: [],
+        ganhosPorCiclo: [],
+        pendencias: []
+      },
+      ferramentas: {
+        ...(safe.ferramentas ?? {}),
+        treinadas: [],
+        especializacoes: [],
+        atributos: {}
+      },
+      proficienciasAlternativas: {
+        armas: [],
+        armaduras: [],
+        escudos: []
+      }
+    });
   }
 
   async _addBeneficio() {
@@ -1774,11 +2799,68 @@ export class FDEActorSheet extends (DND5ECharacterSheet ?? FallbackActorSheet) {
 
     if (expanded.fde) {
       const current = normalizeFDEData(this.actor.getFlag("filhos-do-eden", "data") ?? {});
-      const merged = normalizeFDEData({ ...current, ...(expanded.fde ?? {}) });
+      const submitted = normalizeFDEData({ ...current, ...(expanded.fde ?? {}) });
+      const nextCasta = String(submitted.casta ?? "").trim();
+      const prevCasta = String(current.casta ?? "").trim();
+      const castaChanged = nextCasta !== prevCasta;
+
+      let merged = submitted;
+      if (castaChanged && prevCasta) {
+        const DialogClass = globalThis.Dialog;
+        const confirmed = await new Promise((resolve) => {
+          if (!DialogClass) { resolve(globalThis.confirm?.("Trocar de casta irá resetar toda a progressão desta ficha. Deseja continuar?") ?? false); return; }
+          const dialog = new DialogClass({
+            title: "Trocar de Casta",
+            content: `<p>Trocar de casta irá <strong>resetar toda a progressão</strong> desta ficha (ciclos, perícias, ferramentas e benefícios).</p><p>Deseja continuar?</p>`,
+            buttons: {
+              cancel: { icon: '<i class="fas fa-times"></i>', label: "Cancelar", callback: () => resolve(false) },
+              confirm: { icon: '<i class="fas fa-check"></i>', label: "Confirmar", callback: () => resolve(true) }
+            },
+            default: "cancel",
+            close: () => resolve(false)
+          });
+          dialog.render(true);
+        });
+        if (!confirmed) {
+          await this.actor.setFlag("filhos-do-eden", "data", current);
+          this.render(false);
+          return;
+        }
+        merged = resetFDEDataForCastaChange(submitted, nextCasta);
+        merged.pericias = {
+          ...(merged.pericias ?? {}),
+          pacoteInicialCasta: String(nextCasta ?? "").trim(),
+          fontes: {},
+          escolhasLivres: [],
+          especializacoes: [],
+          ganhosPorCiclo: [],
+          pendencias: []
+        };
+        merged.ferramentas = {
+          ...(merged.ferramentas ?? {}),
+          treinadas: [],
+          especializacoes: [],
+          atributos: {}
+        };
+        merged.proficienciasAlternativas = {
+          armas: [],
+          armaduras: [],
+          escudos: []
+        };
+        await resetManagedProficiencyState(this.actor);
+      }
+
       const synced = this._syncCastaPendingChoices(merged);
       const normalized = normalizeFDEData(synced);
       await this.actor.setFlag("filhos-do-eden", "data", normalized);
-      await this._applyCastaResourceAutomation(normalized);
+      if (castaChanged) {
+        const hardZero = this._buildHardZeroProficiencyData(normalized);
+        await this.actor.setFlag("filhos-do-eden", "data", hardZero);
+        await resetManagedProficiencyState(this.actor);
+      } else {
+        await this._applyCastaResourceAutomation(normalized);
+        await synchronizeActorSkillState(this.actor, current, normalized, { skipInitialPackage: false });
+      }
       delete expanded.fde;
     }
     return super._updateObject(event, expanded);
@@ -1792,6 +2874,16 @@ export class FDEActorSheet extends (DND5ECharacterSheet ?? FallbackActorSheet) {
     for (const key of Object.keys(sanitized)) {
       if (/^system\.abilities\.[a-z]+\.proficient$/i.test(key)) delete sanitized[key];
       if (/^system\.skills\.[a-z]+\.value$/i.test(key)) delete sanitized[key];
+    }
+
+    // Casta/ciclo são preferencialmente tratados por handlers dedicados de change.
+    // Porém, se o usuário submeter diretamente sem disparar change/blur, o _updateObject
+    // precisa receber estes campos para executar o reset corretamente.
+    if (this._fdeHandlingCastaChange) {
+      delete sanitized["fde.casta"];
+    }
+    if (this._fdeHandlingCycleChange) {
+      delete sanitized["fde.ciclo"];
     }
 
     return sanitized;

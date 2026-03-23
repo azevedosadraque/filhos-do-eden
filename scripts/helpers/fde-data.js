@@ -37,6 +37,28 @@ export function createDefaultFDEData() {
     tecnicasConhecidas: [],
     tecnicasLiberadas: [],
     outrasPericias: [],
+    pericias: {
+      pacoteInicialCasta: "",
+      fontes: {},
+      escolhasLivres: [],
+      especializacoes: [],
+      ganhosPorCiclo: [],
+      pendencias: []
+    },
+    ferramentas: {
+      treinadas: [],
+      especializacoes: [],
+      atributos: {}
+    },
+    proficienciasAlternativas: {
+      armas: [],
+      armaduras: [],
+      escudos: []
+    },
+    salvaguardas: {
+      base: {},
+      extras: []
+    },
     escolhasPendentes: {
       pericia: 0,
       ferramenta: 0,
@@ -67,6 +89,17 @@ export function createDefaultFDEData() {
 function normalizeStringArray(value) {
   if (!Array.isArray(value)) return [];
   return value.map((entry) => String(entry ?? "").trim()).filter(Boolean);
+}
+
+function normalizeObjectArray(value) {
+  if (!Array.isArray(value)) return [];
+  return value.filter((entry) => entry && typeof entry === "object").map((entry) => foundry.utils.deepClone(entry));
+}
+
+function normalizeRecord(value) {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? foundry.utils.deepClone(value)
+    : {};
 }
 
 function normalizeNumber(value, fallback = 0) {
@@ -100,6 +133,28 @@ export function normalizeFDEData(data = {}) {
   merged.tecnicasConhecidas = normalizeStringArray(merged.tecnicasConhecidas);
   merged.tecnicasLiberadas = normalizeStringArray(merged.tecnicasLiberadas);
   merged.outrasPericias = normalizeStringArray(merged.outrasPericias);
+  merged.pericias = {
+    pacoteInicialCasta: String(merged.pericias?.pacoteInicialCasta ?? "").trim(),
+    fontes: normalizeRecord(merged.pericias?.fontes),
+    escolhasLivres: normalizeObjectArray(merged.pericias?.escolhasLivres),
+    especializacoes: normalizeObjectArray(merged.pericias?.especializacoes),
+    ganhosPorCiclo: normalizeObjectArray(merged.pericias?.ganhosPorCiclo),
+    pendencias: normalizeObjectArray(merged.pericias?.pendencias)
+  };
+  merged.ferramentas = {
+    treinadas: normalizeObjectArray(merged.ferramentas?.treinadas),
+    especializacoes: normalizeObjectArray(merged.ferramentas?.especializacoes),
+    atributos: normalizeRecord(merged.ferramentas?.atributos)
+  };
+  merged.proficienciasAlternativas = {
+    armas: normalizeObjectArray(merged.proficienciasAlternativas?.armas),
+    armaduras: normalizeObjectArray(merged.proficienciasAlternativas?.armaduras),
+    escudos: normalizeObjectArray(merged.proficienciasAlternativas?.escudos)
+  };
+  merged.salvaguardas = {
+    base: normalizeRecord(merged.salvaguardas?.base),
+    extras: normalizeStringArray(merged.salvaguardas?.extras)
+  };
   merged.recursosCasta.contatos = normalizeStringArray(merged.recursosCasta?.contatos);
   merged.recursosCasta.recursos = normalizeStringArray(merged.recursosCasta?.recursos);
   merged.recursosCasta.contratos = normalizeStringArray(merged.recursosCasta?.contratos);
@@ -118,6 +173,25 @@ export function getFDEData(actor) {
 
 export async function setFDEData(actor, data) {
   return actor.setFlag(FDE_MODULE_ID, "data", normalizeFDEData(data));
+}
+
+export function resetFDEDataForCastaChange(currentData = {}, nextCasta = "") {
+  const current = normalizeFDEData(currentData);
+  const reset = createDefaultFDEData();
+  const normalizedCasta = String(nextCasta ?? "").trim();
+
+  return normalizeFDEData({
+    ...reset,
+    jogador: current.jogador,
+    especie: current.especie,
+    alinhamento: current.alinhamento,
+    casta: normalizedCasta,
+    pericias: {
+      ...reset.pericias,
+      pacoteInicialCasta: normalizedCasta
+    },
+    automacao: foundry.utils.deepClone(current.automacao ?? reset.automacao)
+  });
 }
 
 export function slugify(value) {
