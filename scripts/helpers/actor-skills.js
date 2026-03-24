@@ -3,7 +3,7 @@ import { createDefaultFDEData, getFDEData, setFDEData } from "./fde-data.js";
 import { synchronizeDerivedProgression } from "../logic/progression.js";
 import { applyStartingSkillPackage, grantCycleSkillChoice, recalculateAllSkillData } from "../logic/progression-skills.js";
 
-export async function resetManagedProficiencyState(actor) {
+export async function resetManagedProficiencyState(actor, options = {}) {
   const actorUpdate = {};
 
   for (const abilityId of Object.keys(actor?.system?.abilities ?? {})) {
@@ -12,6 +12,8 @@ export async function resetManagedProficiencyState(actor) {
 
   for (const skillId of Object.keys(actor?.system?.skills ?? {})) {
     actorUpdate[`system.skills.${skillId}.value`] = 0;
+    actorUpdate[`system.skills.${skillId}.proficient`] = 0;
+    actorUpdate[`system.skills.${skillId}.prof`] = 0;
   }
 
   for (const toolId of Object.keys(actor?.system?.tools ?? {})) {
@@ -29,7 +31,11 @@ export async function resetManagedProficiencyState(actor) {
   }
 
   for (const skillId of Object.keys(actor?.system?.skills ?? {})) {
-    if (actor.system.skills?.[skillId]) actor.system.skills[skillId].value = 0;
+    if (actor.system.skills?.[skillId]) {
+      actor.system.skills[skillId].value = 0;
+      if ("proficient" in actor.system.skills[skillId]) actor.system.skills[skillId].proficient = 0;
+      if ("prof" in actor.system.skills[skillId]) actor.system.skills[skillId].prof = 0;
+    }
   }
 
   for (const toolId of Object.keys(actor?.system?.tools ?? {})) {
@@ -54,7 +60,8 @@ export async function resetManagedProficiencyState(actor) {
   }
 
   // Also clear persisted module-side proficiency sources so recalculation cannot restore old values.
-  const fdeData = getFDEData(actor);
+  const forceDefaultFlag = Boolean(options?.forceDefaultFlag);
+  const fdeData = forceDefaultFlag ? createDefaultFDEData() : getFDEData(actor);
   fdeData.pericias = {
     ...(fdeData.pericias ?? {}),
     // Keep package marker aligned with current casta to avoid auto reapplication
@@ -85,6 +92,28 @@ export async function resetManagedProficiencyState(actor) {
   };
 
   await setFDEData(actor, fdeData);
+
+  // Foundry's mergeObject (used internally for in-memory actor updates) does NOT clear
+  // existing nested-object keys when the update payload contains empty `{}` or `[]`.
+  // Manually patch the in-memory flag so subsequent reads (e.g. cloneData) see the
+  // clean state without needing a page reload.
+  const liveFlag = actor.flags?.["filhos-do-eden"]?.data;
+  if (liveFlag) {
+    if (liveFlag.pericias) {
+      liveFlag.pericias.fontes = {};
+      liveFlag.pericias.especializacoes = [];
+      liveFlag.pericias.ganhosPorCiclo = [];
+      liveFlag.pericias.pendencias = [];
+      liveFlag.pericias.escolhasLivres = [];
+    }
+    if (liveFlag.ferramentas) {
+      liveFlag.ferramentas.treinadas = [];
+      liveFlag.ferramentas.especializacoes = [];
+    }
+    if (liveFlag.recursosCasta) {
+      liveFlag.recursosCasta.especializacoes = [];
+    }
+  }
 
   return { ok: true };
 }

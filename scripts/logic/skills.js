@@ -1,4 +1,5 @@
 import { FDE_SKILLS, getAllSkillDefinitions, getSkillAbility as getCatalogSkillAbility, getSkillDefinition, getSkillLabel, normalizeSkillId } from "../data/skills.js";
+import { normalizeCastaId } from "../data/castas.js";
 import { getFDEData } from "../helpers/fde-data.js";
 import { getAbilityMod, getActorProficiencyBonus, getNumericBonus, normalizeProficiencyLevel } from "./proficiency.js";
 
@@ -15,23 +16,48 @@ export function getSkillProficiencyLevel(actor, skillId) {
   if (!normalized) return 0;
 
   const fdeData = getFDEData(actor);
-  const isFDEManaged = Boolean(String(fdeData?.casta ?? "").trim());
-  const sourceEntries = Array.isArray(getSkillSourcesRecord(actor)?.[normalized])
+  const currentCasta = normalizeCastaId(fdeData?.casta);
+  if (!currentCasta) return 0;
+
+  const sourceEntriesRaw = Array.isArray(getSkillSourcesRecord(actor)?.[normalized])
     ? getSkillSourcesRecord(actor)[normalized]
     : [];
+
+  const isEntryFromCurrentCasta = (entry) => {
+    const source = String(entry?.source ?? "").trim().toLowerCase();
+    const entryCasta = normalizeCastaId(entry?.castaId);
+
+    // New tagged entries: strict casta match.
+    if (entryCasta) return entryCasta === currentCasta;
+
+    // Legacy untagged entries: keep casta/cycle sources for compatibility,
+    // but ignore manual sources to prevent stale overrides leaking after reset.
+    if (source === "manual" || source === "manual-override") return false;
+    return true;
+  };
+
+  const sourceEntries = sourceEntriesRaw.filter(isEntryFromCurrentCasta);
   const manualOverride = sourceEntries.find((entry) => entry?.source === "manual-override");
   const manualOverrideLevel = normalizeProficiencyLevel(manualOverride?.value);
   if (manualOverride?.source === "manual-override") {
     return Math.max(0, Math.min(2, Math.trunc(manualOverrideLevel)));
   }
 
-  const nativeValue = normalizeProficiencyLevel(actor?.system?.skills?.[normalized]?.value ?? 0);
   const hasModuleSource = sourceEntries.length > 0;
-  const hasModuleExpertise = fdeData?.pericias?.especializacoes?.some((entry) => entry?.type === "skill" && normalizeSkillId(entry?.target) === normalized) ?? false;
+  const hasModuleExpertise = fdeData?.pericias?.especializacoes?.some((entry) => {
+    if (entry?.type !== "skill" || normalizeSkillId(entry?.target) !== normalized) return false;
+    const source = String(entry?.source ?? "").trim().toLowerCase();
+    const entryCasta = normalizeCastaId(entry?.castaId);
+    if (entryCasta) return entryCasta === currentCasta;
+    if (source === "manual") return false;
+    return true;
+  }) ?? false;
 
-  let derived = hasModuleExpertise ? 2 : (hasModuleSource ? 1 : 0);
-  if (!isFDEManaged && nativeValue === 0.5 && derived < 1) derived = 0.5;
-  return isFDEManaged ? derived : Math.max(nativeValue, derived);
+
+
+  // FDE sheet is always module-managed; do not fallback to native dnd5e prof values.
+  // This guarantees full reset shows 0 until module sources are re-applied.
+  return hasModuleExpertise ? 2 : (hasModuleSource ? 1 : 0);
 }
 
 export function hasSkillProficiency(actor, skillId) {

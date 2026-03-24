@@ -394,10 +394,10 @@ export class FDEActorSheet extends (DND5ECharacterSheet ?? FallbackActorSheet) {
   }
 
   // ApplicationV2: chamado após render
-  _onRender(context, options) {
+  async _onRender(context, options) {
     if (super._onRender) {
       try {
-        super._onRender(context, options);
+        await super._onRender(context, options);
       } catch (error) {
         console.warn("Filhos do Eden | Falha em super._onRender (compatibilidade com template custom).", error);
       }
@@ -1030,31 +1030,43 @@ export class FDEActorSheet extends (DND5ECharacterSheet ?? FallbackActorSheet) {
     if (skillMatch) {
       const skillKey = normalizeSkillId(String(skillMatch[1] ?? "").toLowerCase());
       const fdeData = normalizeFDEData(this.actor.getFlag("filhos-do-eden", "data") ?? {});
-      const isFDEManaged = Boolean(String(fdeData?.casta ?? "").trim());
-      if (isFDEManaged && skillKey) {
+      if (skillKey) {
         // Persist manual override so 0/1/2 chosen in UI is respected after recalculation.
         const fontes = fdeData.pericias.fontes ?? {};
         fontes[skillKey] = (fontes[skillKey] ?? []).filter((e) => e?.source !== "manual" && e?.source !== "manual-override");
-        // Remove existing manual expertise for this skill
+        // Remove existing expertise entries for this skill when user is overriding
+        // proficiency level manually in the sheet.
         fdeData.pericias.especializacoes = (fdeData.pericias.especializacoes ?? [])
-          .filter((e) => !(e?.type === "skill" && normalizeSkillId(e?.target) === skillKey && e?.source === "manual"));
+          .filter((e) => !(e?.type === "skill" && normalizeSkillId(e?.target) === skillKey));
 
         fontes[skillKey] = [
           ...(fontes[skillKey] ?? []),
-          { source: "manual-override", value: Math.max(0, Math.min(2, Math.trunc(Number(value) || 0))) }
+          {
+            source: "manual-override",
+            castaId: String(fdeData?.casta ?? "").trim(),
+            value: Math.max(0, Math.min(2, Math.trunc(Number(value) || 0)))
+          }
         ];
 
         if (value >= 1) {
-          fontes[skillKey] = [...(fontes[skillKey] ?? []), { source: "manual" }];
+          fontes[skillKey] = [
+            ...(fontes[skillKey] ?? []),
+            { source: "manual", castaId: String(fdeData?.casta ?? "").trim() }
+          ];
         }
         if (value >= 2) {
           fdeData.pericias.especializacoes = [
             ...(fdeData.pericias.especializacoes ?? []),
-            { type: "skill", target: skillKey, source: "manual" }
+            {
+              type: "skill",
+              target: skillKey,
+              source: "manual",
+              castaId: String(fdeData?.casta ?? "").trim()
+            }
           ];
         }
         fdeData.pericias.fontes = fontes;
-        await this.actor.setFlag("filhos-do-eden", "data", fdeData);
+        await setFDEData(this.actor, fdeData);
         await recalculateAllSkillData(this.actor);
         return;
       }
@@ -1140,6 +1152,41 @@ export class FDEActorSheet extends (DND5ECharacterSheet ?? FallbackActorSheet) {
         escudos: []
       };
       await resetManagedProficiencyState(this.actor);
+    } else if (!prevCasta && nextCasta) {
+      // Transition from "no casta" to a newly selected casta must start from a
+      // canonical baseline, never from potentially stale in-form data.
+      const baseline = createDefaultFDEData();
+      // Persist baseline first so hidden stale flag data cannot leak into next sync.
+      await setFDEData(this.actor, baseline);
+      await resetManagedProficiencyState(this.actor, { forceDefaultFlag: true });
+
+      nextData = resetFDEDataForCastaChange(nextData, nextCasta);
+      nextData.pericias = {
+        ...(nextData.pericias ?? {}),
+        // Keep empty so synchronizeActorSkillState can apply initial casta package.
+        pacoteInicialCasta: "",
+        fontes: {},
+        escolhasLivres: [],
+        especializacoes: [],
+        ganhosPorCiclo: [],
+        pendencias: []
+      };
+      nextData.ferramentas = {
+        ...(nextData.ferramentas ?? {}),
+        treinadas: [],
+        especializacoes: [],
+        atributos: {}
+      };
+      nextData.proficienciasAlternativas = {
+        armas: [],
+        armaduras: [],
+        escudos: []
+      };
+      nextData.recursosCasta = {
+        ...(nextData.recursosCasta ?? {}),
+        especializacoes: []
+      };
+      await resetManagedProficiencyState(this.actor, { forceDefaultFlag: true });
     }
 
     const shouldForceHardReset = Boolean(prevCasta && nextCasta);
@@ -1147,7 +1194,7 @@ export class FDEActorSheet extends (DND5ECharacterSheet ?? FallbackActorSheet) {
     this._fdeHandlingCastaChange = true;
     try {
       await this._setFDEData(nextData, shouldForceHardReset
-        ? { skipInitialPackage: true, forceZeroProficiencies: true }
+        ? { skipInitialPackage: false, forceZeroProficiencies: true }
         : { skipInitialPackage: false, forceZeroProficiencies: false });
     } finally {
       this._fdeHandlingCastaChange = false;
@@ -1190,9 +1237,10 @@ export class FDEActorSheet extends (DND5ECharacterSheet ?? FallbackActorSheet) {
     const confirmed = await this._confirmSheetReset();
     if (!confirmed) return;
 
-    const resetData = createDefaultFDEData();
-    await setFDEData(this.actor, resetData);
-    await resetManagedProficiencyState(this.actor);
+    await resetManagedProficiencyState(this.actor, { forceDefaultFlag: true });
+    // Enforce canonical default state after reset pipeline.
+    await setFDEData(this.actor, createDefaultFDEData());
+    await resetManagedProficiencyState(this.actor, { forceDefaultFlag: true });
     ui.notifications?.info("Ficha resetada. Escolha a casta novamente para recalcular progressão.");
     this.render(true);
   }
@@ -2292,6 +2340,7 @@ export class FDEActorSheet extends (DND5ECharacterSheet ?? FallbackActorSheet) {
   async _applyCastaResourceAutomation(fdeData) {
     const safe = normalizeFDEData(fdeData ?? {});
     const castaId = getCasta(safe.casta)?.id ?? "";
+    
     const actorUpdate = {};
     const toolItemUpdates = [];
     const scheduledToolItemIds = new Set();
@@ -2301,6 +2350,7 @@ export class FDEActorSheet extends (DND5ECharacterSheet ?? FallbackActorSheet) {
 
     if (castaId === "malakin") {
       const expertiseEntries = safe.recursosCasta?.especializacoes ?? [];
+      
       for (const entry of expertiseEntries) {
         const skillKey = this._resolveSkillKeyFromExpertiseEntry(entry);
         if (skillKey) {
@@ -2653,18 +2703,58 @@ export class FDEActorSheet extends (DND5ECharacterSheet ?? FallbackActorSheet) {
   async _setFDEData(data, options = {}) {
     const previous = normalizeFDEData(this.actor.getFlag("filhos-do-eden", "data") ?? {});
     const synced = this._syncCastaPendingChoices(data);
-    const normalized = normalizeFDEData(synced);
-    await this.actor.setFlag("filhos-do-eden", "data", normalized);
+    let normalized = normalizeFDEData(synced);
+
+    const prevCasta = String(previous?.casta ?? "").trim();
+    const nextCasta = String(normalized?.casta ?? "").trim();
+    const castaChanged = prevCasta !== nextCasta;
+
+    if (castaChanged) {
+      // Canonical casta transition cleanup to avoid stale manual/legacy state
+      // forcing proficiency level 2 across skills after reset or casta swaps.
+      normalized = normalizeFDEData({
+        ...normalized,
+        pericias: {
+          ...(normalized.pericias ?? {}),
+          pacoteInicialCasta: "",
+          fontes: {},
+          escolhasLivres: [],
+          especializacoes: [],
+          ganhosPorCiclo: [],
+          pendencias: []
+        },
+        ferramentas: {
+          ...(normalized.ferramentas ?? {}),
+          treinadas: [],
+          especializacoes: [],
+          atributos: {}
+        },
+        proficienciasAlternativas: {
+          armas: [],
+          armaduras: [],
+          escudos: []
+        },
+        recursosCasta: {
+          ...(normalized.recursosCasta ?? {}),
+          especializacoes: []
+        }
+      });
+
+
+    }
+
+    await setFDEData(this.actor, normalized);
 
     if (options?.forceZeroProficiencies) {
       const hardZero = this._buildHardZeroProficiencyData(normalized);
-      await this.actor.setFlag("filhos-do-eden", "data", hardZero);
+      await setFDEData(this.actor, hardZero);
       await resetManagedProficiencyState(this.actor);
       this.render(true);
       return;
     }
 
     await this._applyCastaResourceAutomation(normalized);
+    
     await synchronizeActorSkillState(this.actor, previous, normalized, options);
 
     this.render(true);
@@ -2805,27 +2895,30 @@ export class FDEActorSheet extends (DND5ECharacterSheet ?? FallbackActorSheet) {
       const castaChanged = nextCasta !== prevCasta;
 
       let merged = submitted;
-      if (castaChanged && prevCasta) {
+      if (castaChanged) {
         const DialogClass = globalThis.Dialog;
-        const confirmed = await new Promise((resolve) => {
-          if (!DialogClass) { resolve(globalThis.confirm?.("Trocar de casta irá resetar toda a progressão desta ficha. Deseja continuar?") ?? false); return; }
-          const dialog = new DialogClass({
-            title: "Trocar de Casta",
-            content: `<p>Trocar de casta irá <strong>resetar toda a progressão</strong> desta ficha (ciclos, perícias, ferramentas e benefícios).</p><p>Deseja continuar?</p>`,
-            buttons: {
-              cancel: { icon: '<i class="fas fa-times"></i>', label: "Cancelar", callback: () => resolve(false) },
-              confirm: { icon: '<i class="fas fa-check"></i>', label: "Confirmar", callback: () => resolve(true) }
-            },
-            default: "cancel",
-            close: () => resolve(false)
+        if (prevCasta) {
+          const confirmed = await new Promise((resolve) => {
+            if (!DialogClass) { resolve(globalThis.confirm?.("Trocar de casta irá resetar toda a progressão desta ficha. Deseja continuar?") ?? false); return; }
+            const dialog = new DialogClass({
+              title: "Trocar de Casta",
+              content: `<p>Trocar de casta irá <strong>resetar toda a progressão</strong> desta ficha (ciclos, perícias, ferramentas e benefícios).</p><p>Deseja continuar?</p>`,
+              buttons: {
+                cancel: { icon: '<i class="fas fa-times"></i>', label: "Cancelar", callback: () => resolve(false) },
+                confirm: { icon: '<i class="fas fa-check"></i>', label: "Confirmar", callback: () => resolve(true) }
+              },
+              default: "cancel",
+              close: () => resolve(false)
+            });
+            dialog.render(true);
           });
-          dialog.render(true);
-        });
-        if (!confirmed) {
-          await this.actor.setFlag("filhos-do-eden", "data", current);
-          this.render(false);
-          return;
+          if (!confirmed) {
+            await setFDEData(this.actor, current);
+            this.render(false);
+            return;
+          }
         }
+
         merged = resetFDEDataForCastaChange(submitted, nextCasta);
         merged.pericias = {
           ...(merged.pericias ?? {}),
@@ -2852,10 +2945,10 @@ export class FDEActorSheet extends (DND5ECharacterSheet ?? FallbackActorSheet) {
 
       const synced = this._syncCastaPendingChoices(merged);
       const normalized = normalizeFDEData(synced);
-      await this.actor.setFlag("filhos-do-eden", "data", normalized);
+      await setFDEData(this.actor, normalized);
       if (castaChanged) {
         const hardZero = this._buildHardZeroProficiencyData(normalized);
-        await this.actor.setFlag("filhos-do-eden", "data", hardZero);
+        await setFDEData(this.actor, hardZero);
         await resetManagedProficiencyState(this.actor);
       } else {
         await this._applyCastaResourceAutomation(normalized);

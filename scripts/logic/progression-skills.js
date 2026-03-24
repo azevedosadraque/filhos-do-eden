@@ -166,6 +166,18 @@ export async function applyStartingSkillPackage(actor, castaId) {
   if (!packageData) return { ok: false, reason: "Casta sem pacote de perícias mapeado." };
 
   const data = cloneData(actor);
+  // Full wipe: Foundry's mergeObject does not clear existing nested-object keys when
+  // the update payload contains an empty `{}`. The in-memory actor flag may still hold
+  // stale manual-override entries even after setFDEData({fontes: {}}) was awaited.
+  // Explicitly resetting here is the only reliable way to guarantee a clean slate.
+  data.pericias.fontes = {};
+  data.pericias.especializacoes = [];
+  data.pericias.pendencias = [];
+  data.pericias.ganhosPorCiclo = [];
+  data.pericias.escolhasLivres = [];
+  data.ferramentas.treinadas = [];
+  data.ferramentas.especializacoes = [];
+  data.recursosCasta.especializacoes = [];
   removeCastaDerivedEntries(data);
 
   data.pericias.pacoteInicialCasta = normalizeCastaId(castaId);
@@ -180,6 +192,8 @@ export async function applyStartingSkillPackage(actor, castaId) {
       castaId: packageData.id
     });
   }
+
+
 
   for (let index = 0; index < Number(packageData.escolhasPericia ?? 0); index += 1) {
     upsertPending(data, buildPendingEntry({

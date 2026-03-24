@@ -40,25 +40,14 @@ export function getToolProficiencyLevel(actor, toolId) {
   if (!normalized) return 0;
 
   const fdeData = getFDEData(actor);
-  const isFDEManaged = Boolean(String(fdeData?.casta ?? "").trim());
-
-  const nativeSystem = normalizeProficiencyLevel(
-    actor?.system?.tools?.[normalized]?.value
-      ?? actor?.system?.tools?.[normalized]?.proficient
-      ?? actor?.system?.tools?.[normalized]?.prof
-      ?? 0
-  );
-
-  const nativeItem = (actor?.items ?? [])
-    .filter((item) => item.type === "tool")
-    .map((item) => ({ id: normalizeToolId(item.name ?? item.id), level: normalizeProficiencyLevel(item.system?.proficient ?? item.system?.proficiency?.value ?? 0) }))
-    .find((entry) => entry.id === normalized)?.level ?? 0;
+  const hasCasta = Boolean(String(fdeData?.casta ?? "").trim());
+  if (!hasCasta) return 0;
 
   const moduleTrained = getToolTrainingEntries(actor).some((entry) => matchesTool(entry, normalized));
   const moduleExpertise = getToolExpertiseEntries(actor).some((entry) => matchesTool(entry, normalized));
 
-  const derived = moduleExpertise ? 2 : (moduleTrained ? 1 : 0);
-  return isFDEManaged ? derived : Math.max(nativeSystem, nativeItem, derived);
+  // FDE sheet is module-managed; ignore native dnd5e fallback values.
+  return moduleExpertise ? 2 : (moduleTrained ? 1 : 0);
 }
 
 export function hasToolProficiency(actor, toolId) {

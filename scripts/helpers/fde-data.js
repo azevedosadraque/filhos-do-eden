@@ -172,7 +172,17 @@ export function getFDEData(actor) {
 }
 
 export async function setFDEData(actor, data) {
-  return actor.setFlag(FDE_MODULE_ID, "data", normalizeFDEData(data));
+  const normalized = normalizeFDEData(data);
+  await actor.setFlag(FDE_MODULE_ID, "data", normalized);
+
+  // Keep the in-memory actor flag authoritative as well.
+  // Foundry's merge behavior can keep stale nested keys (e.g. old pericias.fontes)
+  // when updates contain empty objects, which breaks immediate recalculation flows.
+  if (!actor.flags) actor.flags = {};
+  if (!actor.flags[FDE_MODULE_ID]) actor.flags[FDE_MODULE_ID] = {};
+  actor.flags[FDE_MODULE_ID].data = foundry.utils.deepClone(normalized);
+
+  return normalized;
 }
 
 export function resetFDEDataForCastaChange(currentData = {}, nextCasta = "") {
