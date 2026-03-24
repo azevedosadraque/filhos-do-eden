@@ -111,6 +111,213 @@ function getActorCycle(actor) {
   return Math.max(1, Math.min(6, Math.trunc(raw)));
 }
 
+function getAbilityLabel(abilityId) {
+  const normalized = String(abilityId ?? "").trim().toLowerCase();
+  const localized = globalThis.game?.i18n?.localize?.(`DND5E.Ability${normalized.toUpperCase()}`);
+  if (localized && !localized.startsWith("DND5E.")) return localized;
+
+  const fallbackLabels = {
+    str: "Força",
+    dex: "Destreza",
+    con: "Constituição",
+    int: "Inteligência",
+    wis: "Sabedoria",
+    cha: "Carisma"
+  };
+
+  return fallbackLabels[normalized] ?? normalized.toUpperCase();
+}
+
+function getAbilitySaveModifier(actor, abilityId) {
+  const ability = actor?.system?.abilities?.[abilityId];
+  const explicitSave = Number(ability?.save);
+  if (Number.isFinite(explicitSave)) return Math.trunc(explicitSave);
+
+  const mod = Number(ability?.mod);
+  const proficient = Number(ability?.proficient ?? 0);
+  const proficiencyBonus = Number(actor?.system?.attributes?.prof ?? getActorFDEData(actor)?.progressao?.bonusProficiencia ?? 0) || 0;
+  const safeMod = Number.isFinite(mod) ? mod : 0;
+
+  return Math.trunc(safeMod + (proficiencyBonus * proficient));
+}
+
+function getAbilityCheckModifier(actor, abilityId) {
+  const ability = actor?.system?.abilities?.[abilityId];
+  const explicitMod = Number(ability?.mod);
+  if (Number.isFinite(explicitMod)) return Math.trunc(explicitMod);
+
+  const score = Number(ability?.value ?? 10);
+  if (!Number.isFinite(score)) return 0;
+  return Math.floor((score - 10) / 2);
+}
+
+function getSkillTotalModifier(actor, skillId) {
+  const skill = actor?.system?.skills?.[skillId];
+  const candidates = [skill?.total, skill?.mod, skill?.passive != null ? Number(skill.passive) - 10 : null];
+  for (const candidate of candidates) {
+    const numeric = Number(candidate);
+    if (Number.isFinite(numeric)) return Math.trunc(numeric);
+  }
+  return 0;
+}
+
+function resolveTechniqueChatActor(preferredActorId = "") {
+  const controlled = globalThis.canvas?.tokens?.controlled
+    ?.map((token) => token?.actor)
+    .filter(Boolean)
+    ?? [];
+
+  if (controlled.length > 1) {
+    ui.notifications?.warn("Controle apenas um token para rolar a resistência desta técnica.");
+    return null;
+  }
+
+  const preferredActor = preferredActorId
+    ? globalThis.game?.actors?.get?.(String(preferredActorId).trim()) ?? null
+    : null;
+
+  const actor = (preferredActor?.isOwner ? preferredActor : null)
+    ?? controlled[0]
+    ?? globalThis.game?.user?.character
+    ?? null;
+  if (!actor) {
+    ui.notifications?.warn("Selecione seu token ou defina um personagem para rolar a técnica.");
+    return null;
+  }
+
+  if (!actor.isOwner) {
+    ui.notifications?.warn("Você não possui permissão para rolar por este ator.");
+    return null;
+  }
+
+  return actor;
+}
+
+async function rollTechniqueSaveFromChat(button) {
+  const actor = resolveTechniqueChatActor();
+  if (!actor) return;
+
+  const abilityId = String(button?.dataset?.fdeTechRollAbility ?? "").trim().toLowerCase();
+  const abilityLabel = String(button?.dataset?.fdeTechRollSaveLabel ?? getAbilityLabel(abilityId));
+  const techniqueName = String(button?.dataset?.fdeTechniqueName ?? "Técnica").trim();
+  const casterName = String(button?.dataset?.fdeTechCasterName ?? "Conjurador").trim();
+  const dc = Number(button?.dataset?.fdeTechRollDc ?? 0) || 0;
+  if (!abilityId) {
+    ui.notifications?.warn("A salvaguarda desta técnica não está configurada corretamente.");
+    return;
+  }
+
+  const modifier = getAbilitySaveModifier(actor, abilityId);
+  const roll = await (new Roll("1d20 + @mod", { mod: modifier })).evaluate({ async: true });
+  const success = roll.total >= dc;
+  const outcome = success ? "Sucesso" : "Falha";
+
+  await roll.toMessage({
+    speaker: ChatMessage.getSpeaker({ actor }),
+    flavor: `${techniqueName} · ${abilityLabel} contra CD ${dc} de ${casterName} · ${outcome}`
+  });
+}
+
+async function rollTechniqueCheckFromChat(button) {
+  const actor = resolveTechniqueChatActor(String(button?.dataset?.fdeTechCasterId ?? ""));
+  if (!actor) return;
+
+  const abilityId = String(button?.dataset?.fdeTechRollAbility ?? "").trim().toLowerCase();
+  const dc = Number(button?.dataset?.fdeTechRollDc ?? 0) || 0;
+  const techniqueName = String(button?.dataset?.fdeTechniqueName ?? "Técnica").trim();
+  if (!abilityId) {
+    ui.notifications?.warn("O teste desta técnica não está configurado corretamente.");
+    return;
+  }
+
+  const modifier = getAbilityCheckModifier(actor, abilityId);
+  const roll = await (new Roll("1d20 + @mod", { mod: modifier })).evaluate({ async: true });
+  const success = dc > 0 ? roll.total >= dc : null;
+  const outcome = success == null ? "" : ` · ${success ? "Sucesso" : "Falha"}`;
+
+  await roll.toMessage({
+    speaker: ChatMessage.getSpeaker({ actor }),
+    flavor: `${techniqueName} · Teste de ${getAbilityLabel(abilityId)}${dc > 0 ? ` contra CD ${dc}` : ""}${outcome}`
+  });
+}
+
+async function rollTechniqueSkillFromChat(button) {
+  const actor = resolveTechniqueChatActor(String(button?.dataset?.fdeTechCasterId ?? ""));
+  if (!actor) return;
+
+  const skillId = String(button?.dataset?.fdeTechRollSkill ?? "").trim().toLowerCase();
+  const dc = Number(button?.dataset?.fdeTechRollDc ?? 0) || 0;
+  const techniqueName = String(button?.dataset?.fdeTechniqueName ?? "Técnica").trim();
+  if (!skillId) {
+    ui.notifications?.warn("A perícia desta técnica não está configurada corretamente.");
+    return;
+  }
+
+  const modifier = getSkillTotalModifier(actor, skillId);
+  const label = String(actor?.system?.skills?.[skillId]?.label ?? skillId.toUpperCase());
+  const roll = await (new Roll("1d20 + @mod", { mod: modifier })).evaluate({ async: true });
+  const success = dc > 0 ? roll.total >= dc : null;
+  const outcome = success == null ? "" : ` · ${success ? "Sucesso" : "Falha"}`;
+
+  await roll.toMessage({
+    speaker: ChatMessage.getSpeaker({ actor }),
+    flavor: `${techniqueName} · ${label}${dc > 0 ? ` contra CD ${dc}` : ""}${outcome}`
+  });
+}
+
+async function rollTechniqueAttackFromChat(button) {
+  const actor = resolveTechniqueChatActor(String(button?.dataset?.fdeTechCasterId ?? ""));
+  if (!actor) return;
+
+  const techniqueName = String(button?.dataset?.fdeTechniqueName ?? "Técnica").trim();
+  const modifier = Number(button?.dataset?.fdeTechRollModifier ?? 0) || 0;
+  const abilityId = String(button?.dataset?.fdeTechRollAbility ?? "").trim().toLowerCase();
+  const roll = await (new Roll("1d20 + @mod", { mod: modifier })).evaluate({ async: true });
+  await roll.toMessage({
+    speaker: ChatMessage.getSpeaker({ actor }),
+    flavor: `${techniqueName} · Ataque${abilityId ? ` (${getAbilityLabel(abilityId)})` : ""} · Mod ${modifier >= 0 ? `+${modifier}` : modifier}`
+  });
+}
+
+async function rollTechniqueDamageFromChat(button) {
+  const actor = resolveTechniqueChatActor(String(button?.dataset?.fdeTechCasterId ?? ""));
+  if (!actor) return;
+
+  const formula = String(button?.dataset?.fdeTechRollFormula ?? "").trim();
+  const techniqueName = String(button?.dataset?.fdeTechniqueName ?? "Técnica").trim();
+  const damageType = String(button?.dataset?.fdeTechRollDamageType ?? "").trim();
+  if (!formula) {
+    ui.notifications?.warn("A rolagem de dano desta técnica não está configurada corretamente.");
+    return;
+  }
+
+  const rollData = typeof actor?.getRollData === "function" ? actor.getRollData() : {};
+  const roll = await (new Roll(formula, rollData)).evaluate({ async: true });
+  await roll.toMessage({
+    speaker: ChatMessage.getSpeaker({ actor }),
+    flavor: `${techniqueName} · ${damageType ? `Dano ${damageType}` : "Dano"}`
+  });
+}
+
+async function rollTechniqueHealFromChat(button) {
+  const actor = resolveTechniqueChatActor(String(button?.dataset?.fdeTechCasterId ?? ""));
+  if (!actor) return;
+
+  const formula = String(button?.dataset?.fdeTechRollFormula ?? "").trim();
+  const techniqueName = String(button?.dataset?.fdeTechniqueName ?? "Técnica").trim();
+  if (!formula) {
+    ui.notifications?.warn("A rolagem de cura desta técnica não está configurada corretamente.");
+    return;
+  }
+
+  const rollData = typeof actor?.getRollData === "function" ? actor.getRollData() : {};
+  const roll = await (new Roll(formula, rollData)).evaluate({ async: true });
+  await roll.toMessage({
+    speaker: ChatMessage.getSpeaker({ actor }),
+    flavor: `${techniqueName} · Cura`
+  });
+}
+
 function getArmaDedicadaDamageBonus(cycle) {
   return Math.max(2, Math.min(7, cycle + 1));
 }
@@ -427,6 +634,47 @@ Hooks.on("renderChatMessage", (_message, html) => {
       if (!actorId || !itemId) return;
 
       await rollItemDamageFromChat(actorId, itemId, event);
+    });
+  });
+
+  root.querySelectorAll("[data-fde-tech-roll]").forEach((button) => {
+    if (button.dataset.fdeTechRollBound === "1") return;
+    button.dataset.fdeTechRollBound = "1";
+
+    button.addEventListener("click", async (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+
+      const target = event.currentTarget;
+      const rollType = String(target?.dataset?.fdeTechRoll ?? "").trim().toLowerCase();
+      if (rollType === "save") {
+        await rollTechniqueSaveFromChat(target);
+        return;
+      }
+
+      if (rollType === "check") {
+        await rollTechniqueCheckFromChat(target);
+        return;
+      }
+
+      if (rollType === "skill") {
+        await rollTechniqueSkillFromChat(target);
+        return;
+      }
+
+      if (rollType === "attack") {
+        await rollTechniqueAttackFromChat(target);
+        return;
+      }
+
+      if (rollType === "damage") {
+        await rollTechniqueDamageFromChat(target);
+        return;
+      }
+
+      if (rollType === "heal") {
+        await rollTechniqueHealFromChat(target);
+      }
     });
   });
 });

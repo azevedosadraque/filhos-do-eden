@@ -5,7 +5,7 @@ import { getToolLabel } from "../data/tools.js";
 import { getTechnique } from "../data/tecnicas.js";
 import { resetManagedProficiencyState, synchronizeActorSkillState } from "../helpers/actor-skills.js";
 import { createDefaultFDEData, resetFDEDataForCastaChange, setFDEData } from "../helpers/fde-data.js";
-import { applyCycleProgression, getUnlockedTechniques, learnTechnique, previewCycleUpgrade } from "../logic/progression.js";
+import { applyCycleProgression, getTechniqueAutomationData, getTechniqueCastDialogData, getUnlockedTechniques, learnTechnique, previewCycleUpgrade, resolveTechniqueCastOptions, useTechnique } from "../logic/progression.js";
 import { applySkillOrToolChoice, recalculateAllSkillData } from "../logic/progression-skills.js";
 import { getAvailableExpertiseSkillChoices, getAvailableSkillChoices, getSkillProficiencyLevel, getSkillRows, getSkillTotal } from "../logic/skills.js";
 import { getAvailableExpertiseToolChoices, getAvailableToolChoices, getToolRows } from "../logic/tools.js";
@@ -79,6 +79,7 @@ const FDE_ACTIONS = new Set([
   "add-contrato",
   "remove-contrato",
   "learn-technique",
+  "conjure-technique",
   "confirm-learn-technique",
   "close-learn-inline",
   "resolve-proficiency-choice",
@@ -866,6 +867,13 @@ export class FDEActorSheet extends (DND5ECharacterSheet ?? FallbackActorSheet) {
       input.addEventListener("change", this._onCycleFieldChange.bind(this));
     });
 
+    root.querySelectorAll('input[name="fde.aura.value"], input[name="fde.aura.max"]').forEach((input) => {
+      if (input.dataset.fdeAuraBound === "1") return;
+      input.dataset.fdeAuraBound = "1";
+      input.addEventListener("change", this._onAuraFieldChange.bind(this));
+      input.addEventListener("blur", this._onAuraFieldChange.bind(this));
+    });
+
     root.querySelectorAll("[data-fde-subtab]").forEach((button) => {
       if (button.dataset.fdeSubtabBound === "1") return;
       button.dataset.fdeSubtabBound = "1";
@@ -1271,6 +1279,43 @@ export class FDEActorSheet extends (DND5ECharacterSheet ?? FallbackActorSheet) {
     }
   }
 
+  async _onAuraFieldChange(event) {
+    const input = event.currentTarget;
+    const fieldName = String(input?.name ?? "").trim();
+    if (fieldName !== "fde.aura.value" && fieldName !== "fde.aura.max") return;
+
+    const rawValue = String(input?.value ?? "").trim();
+    const current = normalizeFDEData(this.actor.getFlag("filhos-do-eden", "data") ?? {});
+
+    // Ignore transient empty value when focus changes tabs.
+    if (rawValue === "") {
+      if (fieldName === "fde.aura.value") input.value = String(current.aura?.value ?? 0);
+      if (fieldName === "fde.aura.max") input.value = String(current.aura?.max ?? 0);
+      return;
+    }
+
+    const parsed = Number(rawValue.replace(",", "."));
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      ui.notifications?.warn("Informe um valor de aura válido (0 ou maior).");
+      if (fieldName === "fde.aura.value") input.value = String(current.aura?.value ?? 0);
+      if (fieldName === "fde.aura.max") input.value = String(current.aura?.max ?? 0);
+      return;
+    }
+
+    const value = Math.max(0, Math.trunc(parsed));
+    if (fieldName === "fde.aura.value") {
+      current.aura.value = value;
+    } else {
+      current.aura.max = value;
+    }
+
+    if (current.aura.max < current.aura.value) {
+      current.aura.value = current.aura.max;
+    }
+
+    await this._setFDEData(current);
+  }
+
   _injectFDETab() {
     const root = this._getSheetElement();
     if (!root) {
@@ -1663,6 +1708,10 @@ export class FDEActorSheet extends (DND5ECharacterSheet ?? FallbackActorSheet) {
                 const castTime = technique.castTime ?? "-";
                 const duration = technique.duration ?? "-";
                 const range = technique.range ?? "-";
+                const automation = getTechniqueAutomationData(this.actor, technique);
+                const automationSummary = (automation?.summaryLines ?? [])
+                  .map((line) => `<p class="fde-tech-known-note">${escapeHTML(line)}</p>`)
+                  .join("");
 
                 return `
                   <li>
@@ -1674,6 +1723,15 @@ export class FDEActorSheet extends (DND5ECharacterSheet ?? FallbackActorSheet) {
                         <p><strong>Alcance:</strong> ${escapeHTML(range)}</p>
                         <p><strong>Duração:</strong> ${escapeHTML(duration)}</p>
                         <p>${escapeHTML(explanation || "Sem descrição disponível.")}</p>
+                        ${automationSummary}
+                        <div class="fde-tech-known-actions">
+                          <button
+                            type="button"
+                            class="fde-btn-add"
+                            data-fde-action="conjure-technique"
+                            data-technique-id="${escapeHTML(technique.id)}"
+                          >Conjurar</button>
+                        </div>
                       </div>
                     </details>
                   </li>
@@ -2019,6 +2077,23 @@ export class FDEActorSheet extends (DND5ECharacterSheet ?? FallbackActorSheet) {
         return this._removeContrato(Number(event.currentTarget.dataset.index));
       case "learn-technique":
         return this._openLearnTechniqueDialog();
+      case "conjure-technique": {
+        const techniqueId = String(event.currentTarget?.dataset?.techniqueId ?? "").trim();
+        if (!techniqueId) return undefined;
+
+        const castOptions = await this._promptTechniqueCastOptions(techniqueId);
+        if (castOptions === null) return undefined;
+
+        const result = await useTechnique(this.actor, techniqueId, castOptions ?? {});
+        if (!result?.ok) {
+          ui.notifications?.warn(result?.reason ?? "Não foi possível conjurar esta técnica.");
+          return undefined;
+        }
+
+        ui.notifications?.info(`Técnica conjurada: ${result.technique?.name ?? techniqueId}. Aura restante: ${result.remainingAura}.`);
+        this.render(true);
+        return undefined;
+      }
       case "confirm-learn-technique": {
         const techniqueId = event.currentTarget?.dataset?.techniqueId;
         if (!techniqueId) return undefined;
@@ -2496,20 +2571,59 @@ export class FDEActorSheet extends (DND5ECharacterSheet ?? FallbackActorSheet) {
           const status = known ? "Já aprendida" : (blockedBySlot ? "Sem slot disponível" : "Disponível para aprender");
           const statusKey = known ? "known" : (blockedBySlot ? "blocked" : "available");
           const cost = technique.costAuraText ?? "-";
+          const castTime = technique.castTime ?? "-";
+          const range = technique.range ?? "-";
+          const duration = technique.duration ?? "-";
+          const abalo = technique.abalo ?? "-";
+          const explanation = String(technique.ruleText ?? "Sem explicação cadastrada.").trim();
+          const shortDescription = explanation.length > 220
+            ? `${explanation.slice(0, 217).trimEnd()}...`
+            : explanation;
+          const searchText = [
+            technique.name,
+            technique.id,
+            cost,
+            castTime,
+            range,
+            duration,
+            abalo,
+            explanation
+          ].join(" ");
 
           return `
-            <li class="fde-learn-row${known ? " is-known" : ""}" data-level="${level}" data-status="${statusKey}">
+            <li
+              class="fde-learn-row${known ? " is-known" : ""}${blockedBySlot ? " is-blocked" : ""}"
+              data-level="${level}"
+              data-status="${statusKey}"
+              data-search-text="${escapeHTML(searchText)}"
+            >
               <div class="fde-learn-main">
-                <span class="fde-learn-name">${escapeHTML(technique.name)}</span>
-                <span class="fde-learn-meta">Custo de Aura: ${escapeHTML(cost)} · ${escapeHTML(status)}</span>
+                <div class="fde-learn-headline">
+                  <span class="fde-learn-name">${escapeHTML(technique.name)}</span>
+                  <span class="fde-learn-status fde-learn-status--${statusKey}">${escapeHTML(status)}</span>
+                </div>
+                <span class="fde-learn-meta">Nível ${level} · Custo de Aura: ${escapeHTML(cost)}</span>
+                <div class="fde-learn-tags">
+                  <span class="fde-learn-tag"><strong>Alcance:</strong> ${escapeHTML(range)}</span>
+                  <span class="fde-learn-tag"><strong>Duração:</strong> ${escapeHTML(duration)}</span>
+                  <span class="fde-learn-tag"><strong>Abalo:</strong> ${escapeHTML(abalo)}</span>
+                  <span class="fde-learn-tag"><strong>Conjuração:</strong> ${escapeHTML(castTime)}</span>
+                </div>
+                <p class="fde-learn-description">${escapeHTML(shortDescription)}</p>
+                <details class="fde-learn-details">
+                  <summary>Ver explicação completa</summary>
+                  <p>${escapeHTML(explanation)}</p>
+                </details>
               </div>
-              <button
-                type="button"
-                class="fde-btn-add"
-                data-fde-action="confirm-learn-technique"
-                data-technique-id="${escapeHTML(technique.id)}"
-                ${disabled ? "disabled" : ""}
-              >Aprender Técnica</button>
+              <div class="fde-learn-actions">
+                <button
+                  type="button"
+                  class="fde-btn-add"
+                  data-fde-action="confirm-learn-technique"
+                  data-technique-id="${escapeHTML(technique.id)}"
+                  ${disabled ? "disabled" : ""}
+                >Aprender Técnica</button>
+              </div>
             </li>
           `;
         }).join("");
@@ -2536,20 +2650,25 @@ export class FDEActorSheet extends (DND5ECharacterSheet ?? FallbackActorSheet) {
   }
 
   _applyLearnTechniqueFilters(root) {
+    const normalizeSearch = (value) => String(value ?? "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLocaleLowerCase("pt-BR");
+
     const levelFilter = root.querySelector('[data-fde-learn-filter="level"]')?.value ?? "all";
     const statusFilter = root.querySelector('[data-fde-learn-filter="status"]')?.value ?? "all";
-    const searchFilter = String(root.querySelector('[data-fde-learn-filter="search"]')?.value ?? "").trim().toLocaleLowerCase("pt-BR");
+    const searchFilter = normalizeSearch(root.querySelector('[data-fde-learn-filter="search"]')?.value ?? "").trim();
 
     const rows = [...root.querySelectorAll(".fde-learn-row")];
 
     for (const row of rows) {
       const rowLevel = String(row.dataset.level ?? "");
       const rowStatus = String(row.dataset.status ?? "");
-      const rowName = String(row.querySelector(".fde-learn-name")?.textContent ?? "").toLocaleLowerCase("pt-BR");
+      const rowSearchText = normalizeSearch(row.dataset.searchText ?? row.querySelector(".fde-learn-name")?.textContent ?? "");
 
       const matchLevel = levelFilter === "all" || rowLevel === levelFilter;
       const matchStatus = statusFilter === "all" || rowStatus === statusFilter;
-      const matchSearch = !searchFilter || rowName.includes(searchFilter);
+      const matchSearch = !searchFilter || rowSearchText.includes(searchFilter);
 
       row.hidden = !(matchLevel && matchStatus && matchSearch);
     }
@@ -2565,6 +2684,150 @@ export class FDEActorSheet extends (DND5ECharacterSheet ?? FallbackActorSheet) {
       const hasVisibleAny = rows.some((row) => !row.hidden);
       noResults.hidden = hasVisibleAny;
     }
+  }
+
+  _buildTechniqueCastDialogHTML(dialogData) {
+    const technique = dialogData?.technique;
+    if (!technique) return "";
+
+    const metaItems = [
+      `<span><strong>Custo:</strong> ${escapeHTML(technique.costAuraText)}</span>`,
+      `<span><strong>Conjuração:</strong> ${escapeHTML(technique.castTime ?? "-")}</span>`,
+      `<span><strong>Alcance:</strong> ${escapeHTML(technique.range ?? "-")}</span>`,
+      `<span><strong>Duração:</strong> ${escapeHTML(technique.duration ?? "-")}</span>`
+    ];
+
+    const fieldHTML = (dialogData.fields ?? []).map((field) => {
+      const fieldId = `fde-cast-${field.name}`;
+      const helpHTML = field.help ? `<p class="fde-cast-help">${escapeHTML(field.help)}</p>` : "";
+      const commonAttrs = [
+        `id="${escapeHTML(fieldId)}"`,
+        `name="${escapeHTML(field.name)}"`
+      ];
+
+      if (field.required) commonAttrs.push("required");
+      if (Number.isFinite(field.min)) commonAttrs.push(`min="${field.min}"`);
+      if (Number.isFinite(field.max)) commonAttrs.push(`max="${field.max}"`);
+      if (Number.isFinite(field.step)) commonAttrs.push(`step="${field.step}"`);
+
+      let controlHTML = "";
+      if (field.type === "select") {
+        const options = (field.options ?? []).map((option) => {
+          const isSelected = option.selected === true || String(option.value ?? "") === String(field.value ?? "");
+          return `<option value="${escapeHTML(option.value)}"${isSelected ? " selected" : ""}>${escapeHTML(option.label)}</option>`;
+        }).join("");
+        controlHTML = `<select ${commonAttrs.join(" ")}>${options}</select>`;
+      } else if (field.type === "textarea") {
+        controlHTML = `<textarea ${commonAttrs.join(" ")} rows="4">${escapeHTML(field.value ?? "")}</textarea>`;
+      } else {
+        const inputType = field.type === "number" ? "number" : "text";
+        controlHTML = `<input type="${inputType}" ${commonAttrs.join(" ")} value="${escapeHTML(field.value ?? "")}">`;
+      }
+
+      return `
+        <div class="fde-cast-field${field.fullWidth ? " is-full" : ""}">
+          <label for="${escapeHTML(fieldId)}">${escapeHTML(field.label ?? field.name)}</label>
+          ${controlHTML}
+          ${helpHTML}
+        </div>
+      `;
+    }).join("");
+
+    return `
+      <form class="fde-cast-dialog">
+        <div class="fde-cast-meta">${metaItems.join("")}</div>
+        ${dialogData.hint ? `<p class="fde-cast-hint">${escapeHTML(dialogData.hint)}</p>` : ""}
+        ${fieldHTML ? `<div class="fde-cast-grid">${fieldHTML}</div>` : ""}
+        <details class="fde-cast-rule">
+          <summary>Descrição completa</summary>
+          <p>${escapeHTML(technique.ruleText ?? "")}</p>
+        </details>
+      </form>
+    `;
+  }
+
+  _extractTechniqueCastFormValues(form) {
+    if (!form) return {};
+
+    const values = {};
+    const formData = new FormData(form);
+    for (const [key, value] of formData.entries()) {
+      values[key] = typeof value === "string" ? value.trim() : value;
+    }
+
+    return values;
+  }
+
+  async _promptTechniqueCastOptions(techniqueId) {
+    const dialogData = getTechniqueCastDialogData(this.actor, techniqueId);
+    if (!dialogData) return {};
+
+    const DialogClass = globalThis.Dialog;
+    if (!DialogClass) {
+      return resolveTechniqueCastOptions(this.actor, techniqueId, {});
+    }
+
+    return new Promise((resolve) => {
+      let settled = false;
+      let dialog;
+
+      const finish = (value) => {
+        if (settled) return;
+        settled = true;
+        resolve(value);
+      };
+
+      dialog = new DialogClass({
+        title: dialogData.title,
+        content: this._buildTechniqueCastDialogHTML(dialogData),
+        buttons: {
+          cancel: {
+            label: "Cancelar",
+            callback: () => finish(null)
+          },
+          confirm: {
+            label: "Conjurar"
+          }
+        },
+        default: "confirm",
+        render: (html) => {
+          const root = html?.[0] ?? html;
+          if (!root) return;
+
+          const form = root.querySelector("form");
+          const confirmButton = root.querySelector('.dialog-button[data-button="confirm"]')
+            ?? root.querySelector('.dialog-button.confirm');
+
+          const submit = () => {
+            const values = this._extractTechniqueCastFormValues(form);
+            const result = resolveTechniqueCastOptions(this.actor, techniqueId, values);
+            if (!result?.ok) {
+              ui.notifications?.warn(result?.reason ?? "Não foi possível preparar a conjuração.");
+              return;
+            }
+
+            finish(result);
+            dialog.close();
+          };
+
+          confirmButton?.addEventListener("click", (event) => {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            submit();
+          }, { capture: true });
+
+          form?.addEventListener("submit", (event) => {
+            event.preventDefault();
+            submit();
+          });
+
+          form?.querySelector("input, select, textarea")?.focus?.();
+        },
+        close: () => finish(null)
+      });
+
+      dialog.render(true);
+    });
   }
 
   async _openLearnTechniqueDialog() {
@@ -2697,7 +2960,10 @@ export class FDEActorSheet extends (DND5ECharacterSheet ?? FallbackActorSheet) {
     if (!this.form) return base;
 
     const expanded = foundry.utils.expandObject(getFormDataObject(this.form));
-    return normalizeFDEData({ ...base, ...(expanded.fde ?? {}) });
+    const patch = foundry.utils.deepClone(expanded.fde ?? {});
+    if (patch?.aura?.value === "") delete patch.aura.value;
+    if (patch?.aura?.max === "") delete patch.aura.max;
+    return normalizeFDEData({ ...base, ...patch });
   }
 
   async _setFDEData(data, options = {}) {
@@ -2889,7 +3155,10 @@ export class FDEActorSheet extends (DND5ECharacterSheet ?? FallbackActorSheet) {
 
     if (expanded.fde) {
       const current = normalizeFDEData(this.actor.getFlag("filhos-do-eden", "data") ?? {});
-      const submitted = normalizeFDEData({ ...current, ...(expanded.fde ?? {}) });
+      const patch = foundry.utils.deepClone(expanded.fde ?? {});
+      if (patch?.aura?.value === "") delete patch.aura.value;
+      if (patch?.aura?.max === "") delete patch.aura.max;
+      const submitted = normalizeFDEData({ ...current, ...patch });
       const nextCasta = String(submitted.casta ?? "").trim();
       const prevCasta = String(current.casta ?? "").trim();
       const castaChanged = nextCasta !== prevCasta;

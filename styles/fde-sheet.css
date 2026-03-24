@@ -147,6 +147,12 @@
   box-shadow: none !important;
   text-align: center;
   padding: 0 4px;
+  color: #191813 !important;
+  -webkit-text-fill-color: #191813;
+}
+
+.fde-aura-row input::placeholder {
+  color: rgba(25, 24, 19, 0.65);
 }
 
 .fde-aura-sep {
@@ -464,13 +470,26 @@
   display: flex;
   justify-content: space-between;
   gap: 8px;
-  align-items: center;
+  align-items: flex-start;
+  border: 1px solid color-mix(in srgb, var(--color-border-light-tertiary, #7a7971) 65%, #000 35%);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--dnd5e-color-card, #ffffff) 95%, #000 5%);
+  padding: 8px;
 }
 
 .fde-learn-main {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+
+.fde-learn-headline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 .fde-learn-name {
@@ -478,14 +497,116 @@
   font-weight: 700;
 }
 
+.fde-learn-status {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.fde-learn-status--available {
+  color: #1f5f34;
+  background: color-mix(in srgb, #78c695 22%, #fff 78%);
+}
+
+.fde-learn-status--known {
+  color: #3e3d37;
+  background: color-mix(in srgb, #8d8979 26%, #fff 74%);
+}
+
+.fde-learn-status--blocked {
+  color: #742f2f;
+  background: color-mix(in srgb, #bf7474 26%, #fff 74%);
+}
+
 .fde-learn-meta {
   font-size: 0.74rem;
   opacity: 0.85;
 }
 
+.fde-learn-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+}
+
+.fde-learn-tag {
+  font-size: 0.72rem;
+  line-height: 1.35;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--color-border-light-tertiary, #7a7971) 60%, #000 40%);
+  background: color-mix(in srgb, var(--dnd5e-color-card, #ffffff) 86%, #000 14%);
+}
+
+.fde-learn-description {
+  margin: 0;
+  font-size: 0.74rem;
+  line-height: 1.35;
+  color: color-mix(in srgb, var(--color-text-dark-primary, #191813) 92%, #000 8%);
+}
+
+.fde-learn-details {
+  margin-top: 2px;
+}
+
+.fde-learn-details summary {
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: color-mix(in srgb, var(--color-text-dark-primary, #191813) 80%, #4c2f12 20%);
+}
+
+.fde-learn-details p {
+  margin: 6px 0 0;
+  font-size: 0.74rem;
+  line-height: 1.4;
+}
+
+.fde-learn-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+}
+
 .fde-learn-row.is-known .fde-learn-name,
-.fde-learn-row.is-known .fde-learn-meta {
+.fde-learn-row.is-known .fde-learn-meta,
+.fde-learn-row.is-known .fde-learn-description,
+.fde-learn-row.is-known .fde-learn-tag {
   opacity: 0.6;
+}
+
+.fde-learn-row.is-blocked {
+  background: color-mix(in srgb, #ad6f6f 8%, var(--dnd5e-color-card, #ffffff) 92%);
+}
+
+@media (max-width: 760px) {
+  .fde-learn-filters {
+    grid-template-columns: 1fr;
+  }
+
+  .fde-learn-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .fde-learn-headline {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .fde-learn-actions {
+    width: 100%;
+  }
+
+  .fde-learn-actions .fde-btn-add {
+    width: 100%;
+  }
 }
 
 .fde-empty-hint {
@@ -901,6 +1022,159 @@
 .fde-tech-known-body p {
   margin: 0;
   line-height: 1.35;
+}
+
+.fde-tech-known-note {
+  color: color-mix(in srgb, var(--color-text-dark-primary, #191813) 88%, #4c2f12 12%);
+}
+
+.fde-tech-known-actions {
+  margin-top: 6px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.fde-chat-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fde-chat-card h2,
+.fde-chat-card h3,
+.fde-chat-card p {
+  margin: 0;
+}
+
+.fde-tech-chat-automation {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 4px;
+  padding-top: 6px;
+  border-top: 1px solid color-mix(in srgb, var(--color-border-light-tertiary, #7a7971) 60%, #000 40%);
+}
+
+.fde-tech-chat-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.fde-tech-chat-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  padding: 4px 10px;
+  border: 1px solid color-mix(in srgb, var(--color-border-light-tertiary, #7a7971) 65%, #000 35%);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--dnd5e-color-gold, #c9a227) 22%, #fff 78%);
+  color: #191813;
+  font-size: 0.74rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.fde-tech-chat-button:hover {
+  filter: brightness(1.05);
+}
+
+.fde-tech-chat-context {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--dnd5e-color-gold, #c9a227) 12%, var(--dnd5e-color-card, #ffffff) 88%);
+  border: 1px solid color-mix(in srgb, var(--dnd5e-color-gold, #c9a227) 45%, var(--color-border-light-tertiary, #7a7971) 55%);
+}
+
+.fde-cast-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.fde-cast-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  font-size: 0.75rem;
+}
+
+.fde-cast-meta span {
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--dnd5e-color-card, #ffffff) 88%, #000 12%);
+  border: 1px solid color-mix(in srgb, var(--color-border-light-tertiary, #7a7971) 65%, #000 35%);
+}
+
+.fde-cast-hint {
+  margin: 0;
+  font-size: 0.76rem;
+  color: color-mix(in srgb, var(--color-text-dark-primary, #191813) 78%, #000 22%);
+}
+
+.fde-cast-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 10px;
+}
+
+.fde-cast-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fde-cast-field.is-full {
+  grid-column: 1 / -1;
+}
+
+.fde-cast-field label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.fde-cast-field input,
+.fde-cast-field select,
+.fde-cast-field textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 4px 6px;
+  border-radius: 4px;
+  border: 1px solid color-mix(in srgb, var(--color-border-light-tertiary, #7a7971) 70%, #000 30%);
+  background: color-mix(in srgb, var(--dnd5e-color-card, #ffffff) 92%, #000 8%);
+  color: var(--color-text-dark-primary, #191813);
+}
+
+.fde-cast-field textarea {
+  min-height: 72px;
+  resize: vertical;
+}
+
+.fde-cast-help {
+  margin: 0;
+  font-size: 0.7rem;
+  color: color-mix(in srgb, var(--color-text-dark-primary, #191813) 72%, #000 28%);
+}
+
+.fde-cast-rule {
+  padding-top: 4px;
+  border-top: 1px solid color-mix(in srgb, var(--color-border-light-tertiary, #7a7971) 60%, #000 40%);
+}
+
+.fde-cast-rule summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.fde-cast-rule p {
+  margin: 8px 0 0;
+  line-height: 1.45;
 }
 
 /* ---------- Sub-abas internas (modo injeção) ---------- */

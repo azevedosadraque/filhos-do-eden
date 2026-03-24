@@ -89,6 +89,14 @@ export function canUseTechnique(actor, techniqueOrId, options = {}) {
     return { ok: false, reason: "O custo de aura desta técnica ainda exige revisão manual no suplemento." };
   }
 
+  if (!Number.isFinite(amount) || amount < 0) {
+    return { ok: false, reason: "Quantidade de aura inválida para esta técnica." };
+  }
+
+  if (!Number.isInteger(amount)) {
+    return { ok: false, reason: "O gasto de aura deve ser um número inteiro." };
+  }
+
   if (amount > data.aura.value) {
     return { ok: false, reason: "Aura insuficiente para usar a técnica." };
   }
