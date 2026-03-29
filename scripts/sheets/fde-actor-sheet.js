@@ -5,7 +5,7 @@ import { getToolLabel } from "../data/tools.js";
 import { getTechnique } from "../data/tecnicas.js";
 import { resetManagedProficiencyState, synchronizeActorSkillState } from "../helpers/actor-skills.js";
 import { createDefaultFDEData, resetFDEDataForCastaChange, setFDEData } from "../helpers/fde-data.js";
-import { applyCycleProgression, getTechniqueAutomationData, getTechniqueCastDialogData, getUnlockedTechniques, learnTechnique, previewCycleUpgrade, resolveTechniqueCastOptions, useTechnique } from "../logic/progression.js";
+import { applyCycleProgression, getTechniqueAutomationData, getTechniqueCastDialogData, getUnlockedTechniques, learnTechnique, previewCycleUpgrade, resolveTechniqueCastOptions, synchronizeDerivedProgression, useTechnique } from "../logic/progression.js";
 import { applySkillOrToolChoice, recalculateAllSkillData } from "../logic/progression-skills.js";
 import { getAvailableExpertiseSkillChoices, getAvailableSkillChoices, getSkillProficiencyLevel, getSkillRows, getSkillTotal } from "../logic/skills.js";
 import { getAvailableExpertiseToolChoices, getAvailableToolChoices, getToolRows } from "../logic/tools.js";
@@ -202,6 +202,51 @@ export class FDEActorSheet extends (DND5ECharacterSheet ?? FallbackActorSheet) {
       if (Number.isFinite(parsed)) return parsed;
     }
     return fallback;
+  }
+
+  _getEffectiveProficiencyBonus() {
+    const fdeData = this.actor?.getFlag?.("filhos-do-eden", "data") ?? {};
+    const fdeBonus = Number(fdeData?.progressao?.bonusProficiencia);
+    if (Number.isFinite(fdeBonus)) return Math.trunc(fdeBonus);
+
+    const systemBonus = Number(this.actor?.system?.attributes?.prof ?? 0);
+    if (Number.isFinite(systemBonus)) return Math.trunc(systemBonus);
+
+    return 0;
+  }
+
+  _syncSidebarProficiencyDisplay(root) {
+    if (!root) return;
+
+    const prof = this._getEffectiveProficiencyBonus();
+    const formatted = prof >= 0 ? `+${prof}` : `${prof}`;
+
+    const labels = Array.from(root.querySelectorAll(".label, .title, .name, .caption, span, div"));
+    for (const label of labels) {
+      const text = String(label.textContent ?? "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase();
+
+      if (!text.includes("proficiency") && !text.includes("proficiencia")) continue;
+
+      const container = label.parentElement;
+      if (!container) continue;
+
+      const byClass = Array.from(container.children).find((el) => el.classList?.contains("value"));
+      if (byClass) {
+        byClass.textContent = formatted;
+        return;
+      }
+
+      const sibling = label.previousElementSibling?.classList?.contains("value")
+        ? label.previousElementSibling
+        : (label.nextElementSibling?.classList?.contains("value") ? label.nextElementSibling : null);
+      if (sibling) {
+        sibling.textContent = formatted;
+        return;
+      }
+    }
   }
 
   _scalarFromFormValue(value) {
@@ -407,6 +452,8 @@ export class FDEActorSheet extends (DND5ECharacterSheet ?? FallbackActorSheet) {
     const hasNativeFDETemplate = Boolean(root?.querySelector("form.fde-sheet"));
     if (!hasNativeFDETemplate) this._injectFDETab();
     this._bindFDEActions();
+    this._syncSidebarProficiencyDisplay(root);
+    setTimeout(() => this._syncSidebarProficiencyDisplay(this._getSheetElement()), 120);
   }
 
   // ApplicationV1 / DnD5e legado
@@ -416,6 +463,8 @@ export class FDEActorSheet extends (DND5ECharacterSheet ?? FallbackActorSheet) {
     const hasNativeFDETemplate = Boolean(root?.querySelector("form.fde-sheet"));
     if (!hasNativeFDETemplate) this._injectFDETab();
     this._bindFDEActions();
+    this._syncSidebarProficiencyDisplay(root);
+    setTimeout(() => this._syncSidebarProficiencyDisplay(this._getSheetElement()), 120);
   }
 
   async _onSkillRoll(event) {
@@ -438,6 +487,57 @@ export class FDEActorSheet extends (DND5ECharacterSheet ?? FallbackActorSheet) {
     await roll.toMessage({
       speaker: ChatMessage.getSpeaker({ actor: this.actor }),
       flavor: `${skillLabel} (${modeText}) · Mod ${finalMod >= 0 ? `+${finalMod}` : finalMod}`
+    });
+  }
+
+  async _onAbilitySaveRoll(event) {
+    event.preventDefault();
+    const element = event.currentTarget;
+    const abilityMapByAbbr = {
+      str: "str",
+      dex: "dex",
+      con: "con",
+      int: "int",
+      wis: "wis",
+      cha: "cha",
+      for: "str",
+      des: "dex",
+      sab: "wis",
+      car: "cha"
+    };
+    const fromDataKey = String(element?.dataset?.abilitySaveRoll ?? "").trim().toLowerCase();
+    const fromAbbr = String(element?.dataset?.abilitySaveAbbr ?? "").trim().toLowerCase().slice(0, 3);
+    const abilityId = fromDataKey || abilityMapByAbbr[fromAbbr] || "";
+    if (!abilityId) return;
+
+    const ability = this.actor?.system?.abilities?.[abilityId];
+    if (!ability) return;
+
+    const labels = globalThis.CONFIG?.DND5E?.abilities ?? {};
+    const abilityLabel = this._resolveLabel(labels[abilityId], abilityId.toUpperCase());
+    const promptResult = await this._promptSkillRollOptions(`Salvaguarda de ${abilityLabel}`);
+    if (!promptResult) return;
+
+    const explicitSave = Number(ability?.save);
+    const mod = this._toNumber(ability?.mod, 0);
+    const proficientRaw = ability?.proficient;
+    const proficient = typeof proficientRaw === "boolean"
+      ? (proficientRaw ? 1 : 0)
+      : this._toNumber(proficientRaw, 0);
+    const proficiencyBonus = this._getEffectiveProficiencyBonus();
+    const baseModifier = Number.isFinite(explicitSave)
+      ? Math.trunc(explicitSave)
+      : Math.trunc(mod + (proficiencyBonus * proficient));
+
+    const d20Term = promptResult.mode === "adv" ? "2d20kh" : (promptResult.mode === "dis" ? "2d20kl" : "1d20");
+    const situationalBonus = Number(promptResult.bonus ?? 0) || 0;
+    const roll = await (new Roll(`${d20Term} + @mod + @bonus`, { mod: baseModifier, bonus: situationalBonus })).evaluate({ async: true });
+    const modeText = promptResult.mode === "adv" ? "com Vantagem" : (promptResult.mode === "dis" ? "com Desvantagem" : "normal");
+    const finalMod = baseModifier + situationalBonus;
+
+    await roll.toMessage({
+      speaker: ChatMessage.getSpeaker({ actor: this.actor }),
+      flavor: `Salvaguarda de ${abilityLabel} (${modeText}) · Mod ${finalMod >= 0 ? `+${finalMod}` : finalMod}`
     });
   }
 
@@ -805,6 +905,12 @@ export class FDEActorSheet extends (DND5ECharacterSheet ?? FallbackActorSheet) {
       if (element.dataset.fdeSkillRollBound === "1") return;
       element.dataset.fdeSkillRollBound = "1";
       element.addEventListener("click", this._onSkillRoll.bind(this));
+    });
+
+    root.querySelectorAll("[data-ability-save-roll]").forEach((element) => {
+      if (element.dataset.fdeAbilitySaveRollBound === "1") return;
+      element.dataset.fdeAbilitySaveRollBound = "1";
+      element.addEventListener("click", this._onAbilitySaveRoll.bind(this));
     });
 
     root.querySelectorAll("[data-fde-item-attack]").forEach((button) => {
@@ -1416,7 +1522,7 @@ export class FDEActorSheet extends (DND5ECharacterSheet ?? FallbackActorSheet) {
   _getAbilitiesForDisplay() {
     const abilities = this.actor?.system?.abilities ?? {};
     const labels = globalThis.CONFIG?.DND5E?.abilities ?? {};
-    const proficiencyBonus = this._toNumber(this.actor?.system?.attributes?.prof, 0);
+    const proficiencyBonus = this._getEffectiveProficiencyBonus();
 
     return FDE_ABILITY_ORDER.map((key) => {
       const ability = abilities[key] ?? {};
@@ -1449,7 +1555,7 @@ export class FDEActorSheet extends (DND5ECharacterSheet ?? FallbackActorSheet) {
     const abilities = this.actor?.system?.abilities ?? {};
     const labels = globalThis.CONFIG?.DND5E?.skills ?? {};
     const abilityLabels = globalThis.CONFIG?.DND5E?.abilities ?? {};
-    const proficiencyBonus = this._toNumber(this.actor?.system?.attributes?.prof, 0);
+    const proficiencyBonus = this._getEffectiveProficiencyBonus();
 
     const proficiencyLabel = (value) => {
       if (value >= 2) return "Expertise";
@@ -1557,7 +1663,7 @@ export class FDEActorSheet extends (DND5ECharacterSheet ?? FallbackActorSheet) {
       <div class="fde-stat-card" data-ability="${row.key}">
         <div class="fde-stat-top">
           <span class="fde-stat-abbr">${escapeHTML(row.key.toUpperCase())}</span>
-          <span class="fde-stat-name">${escapeHTML(row.label)}</span>
+          <span class="fde-stat-name"><button type="button" class="fde-save-roll-btn fde-save-roll-btn-title" data-ability-save-roll="${row.key}" title="Rolar salvaguarda de ${escapeHTML(row.label)}">${escapeHTML(row.label)}</button></span>
         </div>
         <div class="fde-stat-main">${row.modLabel}</div>
         <div class="fde-stat-bottom">
@@ -2974,6 +3080,9 @@ export class FDEActorSheet extends (DND5ECharacterSheet ?? FallbackActorSheet) {
     const prevCasta = String(previous?.casta ?? "").trim();
     const nextCasta = String(normalized?.casta ?? "").trim();
     const castaChanged = prevCasta !== nextCasta;
+    const prevCycle = Math.max(1, Math.min(6, Number(previous?.ciclo ?? 1) || 1));
+    const nextCycle = Math.max(1, Math.min(6, Number(normalized?.ciclo ?? 1) || 1));
+    const cycleChanged = prevCycle !== nextCycle;
 
     if (castaChanged) {
       // Canonical casta transition cleanup to avoid stale manual/legacy state
@@ -3010,6 +3119,15 @@ export class FDEActorSheet extends (DND5ECharacterSheet ?? FallbackActorSheet) {
     }
 
     await setFDEData(this.actor, normalized);
+
+    // Keep actor-derived progression (e.g., system.attributes.prof shown on left panel)
+    // in sync whenever cycle or casta changes through direct sheet edits.
+    if (cycleChanged || castaChanged) {
+      const syncResult = await synchronizeDerivedProgression(this.actor, normalized);
+      if (syncResult?.ok && syncResult?.data) {
+        normalized = normalizeFDEData(syncResult.data);
+      }
+    }
 
     if (options?.forceZeroProficiencies) {
       const hardZero = this._buildHardZeroProficiencyData(normalized);

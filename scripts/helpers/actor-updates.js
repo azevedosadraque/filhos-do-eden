@@ -34,6 +34,44 @@ export function buildActorProgressionUpdate(actor, fdeData) {
   };
 }
 
+export async function syncManagedClassLevel(actor, fdeData) {
+  if (!actor) return { ok: false, reason: "Ator inválido." };
+
+  const targetLevels = Math.max(1, Math.trunc(Number(fdeData?.progressao?.totalDadosVida ?? fdeData?.ciclo ?? 1) || 1));
+  const targetProf = Math.trunc(Number(fdeData?.progressao?.bonusProficiencia ?? 2) || 2);
+  const classItems = Array.from(actor?.items ?? []).filter((item) => item?.type === "class");
+  const managedClass = classItems.find((item) => item?.getFlag?.(FDE_MODULE_ID, "managedClass"));
+
+  if (managedClass) {
+    const currentLevels = Number(managedClass?.system?.levels ?? 0) || 0;
+    if (currentLevels !== targetLevels) {
+      await managedClass.update({ "system.levels": targetLevels });
+    }
+  } else if (!classItems.length) {
+    await actor.createEmbeddedDocuments("Item", [{
+      name: "Classe FDE",
+      type: "class",
+      system: {
+        levels: targetLevels
+      },
+      flags: {
+        [FDE_MODULE_ID]: {
+          managedClass: true,
+          generated: true
+        }
+      }
+    }]);
+  }
+
+  // Compatibility fallback for sheets reading these scalar fields directly.
+  await actor.update({
+    "system.details.level": targetLevels,
+    "system.attributes.prof": targetProf
+  });
+
+  return { ok: true, levels: targetLevels, prof: targetProf };
+}
+
 export async function upsertFeatItem(actor, itemData) {
   const existing = actor.items.find((item) => item.type === "feat" && item.getFlag(FDE_MODULE_ID, "featureId") === itemData.featureId);
   const payload = {

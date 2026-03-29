@@ -1,7 +1,7 @@
 import { getAuraBudget, getCycleData, getTechniqueSlotsForCycle } from "../data/cycles.js";
 import { getCasta } from "../data/castas.js";
 import { getTechnique, getTechniques } from "../data/tecnicas.js";
-import { buildActorProgressionUpdate, createProgressionChatCard, getAverageHitPointsByCycle, getConModifier, parseHitDieSize, syncDerivedFeatureItems } from "../helpers/actor-updates.js";
+import { buildActorProgressionUpdate, createProgressionChatCard, getAverageHitPointsByCycle, getConModifier, parseHitDieSize, syncDerivedFeatureItems, syncManagedClassLevel } from "../helpers/actor-updates.js";
 import { FDE_MODULE_ID, getFDEData, normalizeFDEData, setFDEData } from "../helpers/fde-data.js";
 import { spendAura } from "./aura.js";
 import { grantCycleSkillChoice, recalculateAllSkillData } from "./progression-skills.js";
@@ -1374,6 +1374,7 @@ export async function synchronizeDerivedProgression(actor, sourceData = null) {
   await setFDEData(actor, nextData);
   const actorUpdate = foundry.utils.mergeObject(buildActorProgressionUpdate(actor, nextData), buildExtraSaveSyncUpdate(actor, nextData), { inplace: false, insertKeys: true, overwrite: true });
   await actor.update(actorUpdate);
+  await syncManagedClassLevel(actor, nextData);
 
   return {
     ok: true,
@@ -1451,6 +1452,7 @@ export async function applyCycleProgression(actor, newCycle) {
 
   await setFDEData(actor, dataToApply);
   await actor.update(buildActorProgressionUpdate(actor, dataToApply));
+  await syncManagedClassLevel(actor, dataToApply);
   for (let cycle = previousCycle + 1; cycle <= Number(newCycle); cycle += 1) {
     await grantCycleSkillChoice(actor, cycle);
   }

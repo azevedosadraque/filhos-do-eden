@@ -81,7 +81,9 @@
         <div class="fde-ability-grid">
           {{#each abilities}}
             <article class="fde-card">
-              <div class="fde-card-title">{{this.label}} ({{this.abbreviation}})</div>
+              <div class="fde-card-title">
+                <button type="button" class="fde-save-roll-btn fde-save-roll-btn-title" data-ability-save-roll="{{@key}}" data-ability-save-abbr="{{this.abbreviation}}" title="Rolar salvaguarda de {{this.label}}">{{this.label}} ({{this.abbreviation}})</button>
+              </div>
               <div class="fde-stat-line"><strong>Valor:</strong> {{this.value}}</div>
               <div class="fde-stat-line"><strong>Mod:</strong> {{this.mod}}</div>
               <div class="fde-stat-line"><strong>Save:</strong> {{this.save}}</div>
