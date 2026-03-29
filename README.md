@@ -17,7 +17,7 @@ Este é o jeito mais simples para instalar e receber atualizações.
 3. Clique em Install Module (ou Instalar Módulo).
 4. Cole a URL de manifesto abaixo no campo Manifest URL:
 
-https://github.com/azevedosadraque/filhos-do-eden/releases/latest/download/module.json
+https://raw.githubusercontent.com/azevedosadraque/filhos-do-eden/main/module.json
 
 5. Clique em Install.
 6. Abra seu mundo.
@@ -67,7 +67,7 @@ Data/modules/filhos-do-eden/module.json
 ### O Foundry não instala pela URL
 
 - Verifique se a URL do manifest está exatamente assim:
-  https://github.com/azevedosadraque/filhos-do-eden/releases/latest/download/module.json
+  https://raw.githubusercontent.com/azevedosadraque/filhos-do-eden/main/module.json
 - Confirme conexão com internet e acesso ao GitHub.
 - Confirme se existe uma Release publicada com os assets corretos.
 
