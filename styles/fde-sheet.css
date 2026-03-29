@@ -259,6 +259,34 @@
   color: color-mix(in srgb, var(--color-text-dark-primary, #191813) 78%, #000 22%);
 }
 
+.fde-save-roll-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  font-weight: 700;
+  color: var(--dnd5e-color-gold, #c9a227);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.fde-save-roll-btn:hover {
+  filter: brightness(1.08);
+}
+
+.fde-save-roll-btn:focus-visible {
+  outline: 1px solid var(--dnd5e-color-gold, #c9a227);
+  outline-offset: 1px;
+  border-radius: 2px;
+}
+
+.fde-save-roll-btn-title {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .fde-inline-actions {
   display: inline-flex;
   align-items: center;
